@@ -1,6 +1,6 @@
 use tauri::{
     menu::{MenuItem, MenuBuilder, SubmenuBuilder},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    tray::{MouseButton, MouseButtonState, TrayIconEvent},
     Manager,
 };
 
@@ -287,12 +287,12 @@ fn parse_paste(text: String) -> serde_json::Value {
     result
 }
 
-fn build_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let providers = config::load_providers().unwrap_or_default();
     let cfg = config::load_app_config().unwrap_or_default();
     let active_id = cfg.instances.first().and_then(|i| i.active_provider_id.clone());
 
-    // ── "启动平台" 子菜单（Builder 模式）────────────────────────
+    // ── "启动平台" 子菜单
     let mut platform_builder = SubmenuBuilder::new(app, "启动平台");
     for p in &providers {
         let label = if Some(&p.id) == active_id.as_ref() {
@@ -307,7 +307,7 @@ fn build_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     let platform_sub = platform_builder.build()?;
 
-    // ── 顶层菜单：显示主窗口 | 启动平台▸ | 退出 ───────────────
+    // ── 顶层菜单
     let show_win = MenuItem::with_id(app, "__show__", "显示主窗口", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "__quit__", "退出", true, None::<&str>)?;
 
@@ -317,10 +317,10 @@ fn build_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .item(&quit)
         .build()?;
 
-    TrayIconBuilder::new()
-        .menu(&menu)
-        .tooltip("MMYCodeSwitch-API")
-        .on_menu_event(|app, event| {
+    // 获取配置文件创建的托盘图标并设置菜单
+    if let Some(tray) = app.tray_by_id("main") {
+        tray.set_menu(Some(menu))?;
+        tray.on_menu_event(|app, event| {
             let id = event.id().as_ref();
             match id {
                 "__show__" => {
@@ -358,14 +358,14 @@ fn build_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                             config::save_app_config(&cfg2).map_err(|e| e.to_string())
                         })();
                     }
-                    // 刷新整个托盘菜单以更新勾选状态
+                    // 刷新托盘菜单
                     if let Some(tray) = app.tray_by_id("main") {
-                        let _ = rebuild_tray_full(&app, &tray);
+                        let _ = rebuild_tray_menu(app, &tray);
                     }
                 }
             }
-        })
-        .on_tray_icon_event(|tray, event| {
+        });
+        tray.on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
                 let app = tray.app_handle();
                 if let Some(win) = app.get_webview_window("main") {
@@ -373,18 +373,17 @@ fn build_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                     let _ = win.set_focus();
                 }
             }
-        })
-        .build(app)?;
+        });
+    }
     Ok(())
 }
 
-/// 完整重建托盘菜单（切换 provider 后刷新勾选标记）
-fn rebuild_tray_full(app: &tauri::AppHandle, tray: &tauri::tray::TrayIcon) -> Result<(), Box<dyn std::error::Error>> {
+/// 重建托盘菜单（切换 provider 后刷新勾选标记）
+fn rebuild_tray_menu(app: &tauri::AppHandle, tray: &tauri::tray::TrayIcon) -> Result<(), Box<dyn std::error::Error>> {
     let providers = config::load_providers().unwrap_or_default();
     let cfg = config::load_app_config().unwrap_or_default();
     let active_id = cfg.instances.first().and_then(|i| i.active_provider_id.clone());
 
-    // 子菜单项
     let mut platform_builder = SubmenuBuilder::new(app, "启动平台");
     for p in &providers {
         let label = if Some(&p.id) == active_id.as_ref() { format!("✓ {}", p.name) } else { p.name.clone() };
@@ -413,7 +412,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
-            build_tray(app)?;
+            setup_tray(&app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

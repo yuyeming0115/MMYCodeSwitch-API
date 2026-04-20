@@ -6,7 +6,15 @@
       "Bash(npm --version)",
       "Bash(rustc --version)",
       "Bash(cargo --version)",
-      "Bash(cargo check *)"
+      "Bash(cargo check *)",
+      "Bash(pip show *)",
+      "Bash(pip install *)",
+      "Bash(npm run *)",
+      "Bash(taskkill /F /IM \"MMYCodeSwitch-API.exe\")",
+      "Bash(netstat -ano)",
+      "Bash(taskkill /F /PID 35660)",
+      "Bash(cmd *)",
+      "Bash(cargo build *)"
     ]
   }
 }
