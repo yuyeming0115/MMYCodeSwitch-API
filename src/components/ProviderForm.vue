@@ -49,7 +49,7 @@
     <template #footer>
       <n-space justify="end">
         <n-button @click="show = false">{{ t('cancel') }}</n-button>
-        <n-button type="primary" @click="submit">{{ t('save') }}</n-button>
+        <n-button type="primary" :loading="saving" @click="submit">{{ t('save') }}</n-button>
       </n-space>
     </template>
   </n-modal>
@@ -71,6 +71,7 @@ const props = defineProps<{ provider?: Provider }>()
 const emit = defineEmits(['done'])
 
 const isEdit = ref(false)
+const saving = ref(false)
 const showPaste = ref(false)
 const pasteText = ref('')
 const parseResult = ref<{ baseUrl?: string; apiKey?: string } | null>(null)
@@ -90,7 +91,7 @@ const form = ref({
 
 watch(() => props.provider, (p) => {
   isEdit.value = !!p
-  iconPreview.value = p?.icon_path ? `asset://localhost/${p.icon_path.replace(/\\/g, '/')}` : ''
+  iconPreview.value = p?.icon_path ? resolveIconUrl(p.icon_path) : ''
   pendingIconData.value = null
   if (p) {
     form.value = { name: p.name, icon_fallback: p.icon_fallback, provider_type: p.provider_type, api_key_plain: '', base_url: p.base_url ?? '', models_default: p.models?.default ?? '', notes: p.notes ?? '' }
@@ -100,6 +101,15 @@ watch(() => props.provider, (p) => {
 }, { immediate: true })
 
 function triggerIconUpload() { iconInput.value?.click() }
+
+/** 解析图标 URL（与 ProviderGrid 保持一致） */
+function resolveIconUrl(iconPath: string): string {
+  const normalized = iconPath.replace(/\\/g, '/')
+  if (/^[A-Za-z]:\/|^\//.test(normalized)) {
+    return `asset://localhost/${normalized}`
+  }
+  return `/${normalized}`
+}
 
 function onIconFile(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
@@ -128,25 +138,34 @@ function applyParse() {
 
 async function submit() {
   if (!form.value.name) { msg.error(t('required')); return }
-  const id = props.provider?.id ?? `provider_${Date.now()}`
-  let icon_path: string | null = props.provider?.icon_path ?? null
-  if (pendingIconData.value) {
-    icon_path = await invoke<string>('save_provider_icon', { providerId: id, dataBase64: pendingIconData.value.base64, ext: pendingIconData.value.ext })
+  saving.value = true
+  try {
+    const id = props.provider?.id ?? `provider_${Date.now()}`
+    let icon_path: string | null = props.provider?.icon_path ?? null
+    if (pendingIconData.value) {
+      icon_path = await invoke<string>('save_provider_icon', { providerId: id, dataBase64: pendingIconData.value.base64, ext: pendingIconData.value.ext })
+    }
+    const input = {
+      id: props.provider?.id ?? null,
+      name: form.value.name.trim(),
+      icon_fallback: form.value.icon_fallback || form.value.name.slice(0, 2),
+      provider_type: form.value.provider_type,
+      base_url: form.value.base_url || null,
+      api_key_plain: form.value.api_key_plain || null,
+      models: form.value.models_default ? { default: form.value.models_default } : null,
+      notes: form.value.notes || null,
+      icon_path,
+    }
+    console.log('[ProviderForm] submitting:', JSON.stringify(input, (_, v) => typeof v === 'string' && v.length > 50 ? '***' : v))
+    await store.upsertProvider(input)
+    msg.success(t('save_success'))
+    show.value = false
+    emit('done')
+  } catch (e) {
+    console.error('[ProviderForm] submit error:', e)
+    msg.error('保存失败: ' + (e as Error)?.message ?? String(e))
+  } finally {
+    saving.value = false
   }
-  const input = {
-    id: props.provider?.id ?? null,
-    name: form.value.name,
-    icon_fallback: form.value.icon_fallback || form.value.name.slice(0, 2),
-    provider_type: form.value.provider_type,
-    base_url: form.value.base_url || null,
-    api_key_plain: form.value.api_key_plain || null,
-    models: form.value.models_default ? { default: form.value.models_default } : null,
-    notes: form.value.notes || null,
-    icon_path,
-  }
-  await store.upsertProvider(input)
-  msg.success(t('save_success'))
-  show.value = false
-  emit('done')
 }
 </script>

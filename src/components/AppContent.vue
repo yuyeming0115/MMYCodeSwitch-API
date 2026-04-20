@@ -94,31 +94,8 @@ function confirmDelete(p: Provider) {
 
 <template>
   <div class="app">
-    <header class="topbar">
-      <span class="title">{{ t('app_title') }}</span>
-      <n-select
-        v-if="store.config.instances.length > 1"
-        :value="store.activeInstanceId"
-        :options="store.config.instances.map(i => ({ label: i.name, value: i.id }))"
-        style="width:160px"
-        @update:value="v => store.activeInstanceId = v"
-      />
-      <n-space>
-        <n-button text @click="isDark = !isDark">{{ isDark ? '☀' : '☾' }}</n-button>
-        <n-button text @click="showSettings = true">⚙</n-button>
-      </n-space>
-    </header>
-
-    <div class="active-bar">
-      <span>{{ t('current_active') }}：</span>
-      <strong>{{ store.providers.find(p => p.id === activeProviderId)?.name ?? t('none') }}</strong>
-      <span v-if="activeProviderId" style="color:#18a058;margin-left:4px">✓</span>
-    </div>
-
+    <!-- 主内容区：仅 ProviderGrid -->
     <div class="content">
-      <div style="padding: 8px 16px">
-        <n-button type="primary" size="small" @click="showQuickSetup = true">⚡ 快速配置</n-button>
-      </div>
       <ProviderGrid
         :providers="store.providers"
         :active-provider-id="activeProviderId"
@@ -129,10 +106,63 @@ function confirmDelete(p: Provider) {
       />
     </div>
 
-    <div style="font-size:11px;color:#aaa;padding:4px 16px">右键卡片可编辑/删除</div>
+    <!-- 底部工具栏：快速配置 + 主题切换 + 设置 -->
+    <footer class="toolbar">
+      <n-button type="primary" size="large" @click="showQuickSetup = true">⚡ {{ t('quick_setup') }}</n-button>
+      <n-button size="large" secondary @click="isDark = !isDark">{{ isDark ? '☀️' : '🌙' }}</n-button>
+      <n-button size="large" secondary @click="showSettings = true">⚙️</n-button>
+    </footer>
+
+    <!-- 底部状态栏：显示操作提示 -->
+    <footer class="statusbar">
+      <span>{{ t('right_click_hint') }}</span>
+    </footer>
 
     <ProviderForm v-model:show="showForm" :provider="editingProvider" @done="store.loadProviders" />
     <Settings v-model:show="showSettings" />
     <QuickSetup v-model:show="showQuickSetup" @done="store.loadProviders" />
   </div>
 </template>
+
+<style scoped>
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 16px 0;
+}
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid #eee;
+  flex-shrink: 0;
+  background: #fafafa;
+}
+.statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 16px;
+  font-size: 11px;
+  color: #888;
+  background: #f5f5f5;
+  flex-shrink: 0;
+}
+
+/* 深色模式适配 */
+body.dark .toolbar {
+  border-top-color: #333;
+  background: #242424;
+}
+body.dark .statusbar {
+  color: #888;
+  background: #1a1a1a;
+}
+</style>

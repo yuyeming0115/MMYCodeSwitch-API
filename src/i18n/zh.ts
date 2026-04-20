@@ -51,4 +51,7 @@ export default {
   upload_icon: '上传图标',
   quick_setup: '快速配置',
   quick_setup_desc: '选择平台模板，只需填写 API Key 即可一键生成',
+  light_mode: '浅色',
+  dark_mode: '深色',
+  right_click_hint: '右键卡片可编辑/删除',
 }

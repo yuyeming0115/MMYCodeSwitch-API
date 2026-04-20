@@ -51,4 +51,7 @@ export default {
   upload_icon: 'Upload Icon',
   quick_setup: 'Quick Setup',
   quick_setup_desc: 'Select a template, fill in API Key to generate config',
+  light_mode: 'Light',
+  dark_mode: 'Dark',
+  right_click_hint: 'Right-click card to edit/delete',
 }

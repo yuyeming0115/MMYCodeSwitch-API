@@ -8,8 +8,8 @@
       @click="emit('switch', p)"
       @contextmenu.prevent="e => openMenu(e, p)"
     >
-      <img v-if="p.icon_path" :src="`asset://localhost/${p.icon_path.replace(/\\/g, '/')}`" class="icon-img" />
-      <div v-else class="icon">{{ p.icon_fallback }}</div>
+      <img v-if="p.icon_path" :src="resolveIconUrl(p.icon_path)" class="icon-img" />
+      <div v-else class="icon-wrap"><span class="icon">{{ p.icon_fallback }}</span></div>
       <div class="label">{{ p.name }}</div>
       <div v-if="p.id === activeProviderId" class="badge">✓</div>
       <div v-if="testState[p.id]" class="test-badge" :class="testState[p.id]">
@@ -17,7 +17,7 @@
       </div>
     </div>
     <div class="card add-card" @click="emit('add')">
-      <div class="icon">+</div>
+      <div class="icon-wrap"><div class="icon">+</div></div>
       <div class="label">{{ t('add_provider') }}</div>
     </div>
   </div>
@@ -57,6 +57,17 @@ const menuOptions = [
   { label: () => t('delete'), key: 'delete', props: { style: 'color:#d03050' } },
 ]
 
+/** 解析图标 URL：支持绝对路径（用户上传）和相对路径（内置/public 图标） */
+function resolveIconUrl(iconPath: string): string {
+  const normalized = iconPath.replace(/\\/g, '/')
+  // 绝对路径（如 C:\Users\... 或 /home/...）→ 用 Tauri asset 协议读取用户数据目录的文件
+  if (/^[A-Za-z]:\/|^\//.test(normalized)) {
+    return `asset://localhost/${normalized}`
+  }
+  // 相对路径（如 icons/dashscope.svg）→ 指向 public/ 目录，Vite 直接服务
+  return `/${normalized}`
+}
+
 function openMenu(e: MouseEvent, p: Provider) {
   menuTarget.value = p
   menuX.value = e.clientX
@@ -95,23 +106,65 @@ async function onMenuSelect(key: string) {
 </script>
 
 <style scoped>
-.grid { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 0; }
+.grid { display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 0; }
 .card {
-  width: 96px; height: 96px; border-radius: 12px; border: 2px solid #e0e0e0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 108px; min-height: 100px; border-radius: 14px; border: 2px solid #e0e0e0;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  padding: 14px 8px 10px;
   cursor: pointer; position: relative; transition: border-color .2s, box-shadow .2s;
-  background: #fafafa;
+  background: #fff;
 }
-.card:hover { border-color: #18a058; box-shadow: 0 2px 8px #18a05820; }
+.card:hover { border-color: #18a058; box-shadow: 0 3px 10px rgba(24,160,88,0.16); transform: translateY(-1px); }
 .card.active { border-color: #18a058; background: #f0faf5; }
-.icon { font-size: 28px; font-weight: 700; color: #333; }
-.label { font-size: 12px; margin-top: 4px; text-align: center; color: #555; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.badge { position: absolute; top: 6px; right: 8px; color: #18a058; font-size: 14px; font-weight: 700; }
-.test-badge { position: absolute; bottom: 6px; right: 8px; font-size: 12px; font-weight: 700; }
+
+/* 深色模式适配 */
+body.dark .card { background: #2a2a2a; border-color: #444; }
+body.dark .card:hover { border-color: #18a058; }
+body.dark .card.active { background: #1a3a28; border-color: #18a058; }
+body.dark .label { color: #ccc; }
+
+/* 图标区域：彩色圆角背景（与 QuickSetup 风格统一） */
+.icon-wrap {
+  width: 48px; height: 48px;
+  border-radius: 13px;
+  border: 1.5px solid #e0e0e0;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, #f8f8f8, #eee);
+  transition: all 0.2s;
+}
+body.dark .icon-wrap {
+  background: linear-gradient(135deg, #333, #3a3a3a);
+  border-color: #555;
+}
+.card:hover .icon-wrap,
+.card.active .icon-wrap {
+  border-color: #18a05860;
+  box-shadow: 0 2px 6px rgba(24,160,88,0.15);
+}
+.icon { font-size: 22px; line-height: 1; }
+
+.label {
+  font-size: 12px; font-weight: 600;
+  text-align: center; color: #444;
+  max-width: 90px;
+  line-height: 1.35;
+  /* 允许换行，最多2行 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+}
+
+.badge { position: absolute; top: 5px; right: 7px; color: #18a058; font-size: 14px; font-weight: 700; }
+.test-badge { position: absolute; bottom: 5px; right: 7px; font-size: 11px; font-weight: 700; }
 .test-badge.testing { color: #aaa; }
 .test-badge.ok { color: #18a058; }
 .test-badge.fail { color: #d03050; }
 .icon-img { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; }
-.add-card { border-style: dashed; background: #f5f5f5; }
-.add-card .icon { color: #aaa; }
+.add-card { border-style: dashed; background: #fafafa; }
+body.dark .add-card { background: #222; }
+.add-card .icon { color: #bbb; font-size: 26px; }
+.add-card .icon-wrap { background: none; border-style: dashed; }
 </style>

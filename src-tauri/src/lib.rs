@@ -1,5 +1,5 @@
 use tauri::{
-    menu::{Menu, MenuItem, MenuBuilder, SubmenuBuilder},
+    menu::{MenuItem, MenuBuilder, SubmenuBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
@@ -185,27 +185,48 @@ fn derive_key_from_password(password: &str) -> String {
     STANDARD.encode(&hash[..32])
 }
 
-// ── 连通性测试 ────────────────────────────────────────────────────────────────
+// ── 连通性测试（智能适配不同协议） ────────────────────────────────────────
 #[tauri::command]
 async fn test_provider(provider_id: String) -> Result<bool, String> {
     let providers = config::load_providers().map_err(|e| e.to_string())?;
     let p = providers.iter().find(|p| p.id == provider_id).ok_or("not found")?;
     if p.provider_type != "api" { return Ok(true); }
-    let base_url = p.base_url.as_deref().unwrap_or("https://api.anthropic.com");
+    let base_url = p.base_url.as_deref().unwrap_or("https://api.anthropic.com").trim_end_matches('/');
     let machine_key = config::get_or_create_key().map_err(|e| e.to_string())?;
     let api_key = match &p.api_key_encrypted {
         Some(enc) => crypto::decrypt(enc, &machine_key).map_err(|e| e.to_string())?,
         None => return Err("no api key".to_string()),
     };
-    let url = format!("{}/v1/models", base_url.trim_end_matches('/'));
+
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(8))
+        .timeout(std::time::Duration::from_secs(10))
         .build().map_err(|e| e.to_string())?;
-    let resp = client.get(&url)
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .send().await.map_err(|e| e.to_string())?;
-    Ok(resp.status().is_success() || resp.status().as_u16() == 401)
+
+    // 根据端点特征选择测试策略
+    let url_lower = base_url.to_lowercase();
+    let (test_url, use_bearer) = if url_lower.contains("/apps/anthropic") || url_lower.ends_with("anthropic.com") || !url_lower.contains("dashscope") {
+        // Anthropic 兼容：尝试 GET /v1/models（标准 Anthropic 端点）
+        (format!("{}/v1/models", base_url), false)
+    } else if url_lower.contains("/v1") && !url_lower.ends_with("/v1") {
+        // 已包含版本路径（如 ...com/v1）：直接用 /models
+        (format!("{}/models", base_url), true)
+    } else {
+        // OpenAI 兼容（默认）：追加 /v1/models，使用 Bearer 认证
+        (format!("{}/v1/models", base_url), true)
+    };
+
+    let mut req = client.get(&test_url);
+    if use_bearer {
+        req = req.header("Authorization", format!("Bearer {}", api_key));
+    } else {
+        req = req.header("x-api-key", &api_key)
+               .header("anthropic-version", "2023-06-01");
+    }
+
+    match req.send().await {
+        Ok(resp) => Ok(resp.status().is_success() || resp.status().as_u16() == 401),
+        Err(e) => Err(format!("请求失败: {}", e)),
+    }
 }
 
 // ── 自动检测 Claude Code 实例 ─────────────────────────────────────────────────

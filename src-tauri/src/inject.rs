@@ -4,9 +4,11 @@ use serde_json::Value;
 use std::path::Path;
 use crate::config::Provider;
 
+// 需要清除的 API 相关字段（login 模式或切换 provider 时全部移除）
 const ENV_KEYS: &[&str] = &[
     "ANTHROPIC_AUTH_TOKEN",
     "ANTHROPIC_BASE_URL",
+    // 分层模型字段 — 切换 provider 时必须全部清除，避免残留
     "ANTHROPIC_MODEL",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL",
     "ANTHROPIC_DEFAULT_SONNET_MODEL",
@@ -28,11 +30,18 @@ pub fn inject(config_dir: &str, provider: &Provider, api_key_plain: Option<&str>
     let env_map = env.entry("env").or_insert(serde_json::json!({}));
     let env_obj = env_map.as_object_mut().unwrap();
 
+    // ── 先清除所有 API 相关字段（避免残留旧的分层模型值）────
     if provider.provider_type == "login" {
+        // login 模式：全部移除
         for key in ENV_KEYS {
             env_obj.remove(*key);
         }
     } else {
+        // API 模式：先清除旧字段，再写入新值
+        for key in ENV_KEYS {
+            env_obj.remove(*key);
+        }
+
         if let Some(key) = api_key_plain {
             env_obj.insert("ANTHROPIC_AUTH_TOKEN".to_string(), Value::String(key.to_string()));
         }
