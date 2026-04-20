@@ -9,7 +9,7 @@
       @contextmenu.prevent="e => openMenu(e, p)"
     >
       <img v-if="p.icon_path" :src="resolveIconUrl(p.icon_path)" class="icon-img" />
-      <div v-else class="icon-wrap"><span class="icon">{{ p.icon_fallback }}</span></div>
+      <div v-else class="icon-wrap"><span class="icon">{{ p.icon_fallback || p.name?.charAt(0) || '?' }}</span></div>
       <div class="label">{{ p.name }}</div>
       <div v-if="p.id === activeProviderId" class="badge">✓</div>
       <div v-if="testState[p.id]" class="test-badge" :class="testState[p.id]">
@@ -142,7 +142,13 @@ body.dark .icon-wrap {
   border-color: #18a05860;
   box-shadow: 0 2px 6px rgba(24,160,88,0.15);
 }
-.icon { font-size: 22px; line-height: 1; }
+.icon { 
+  font-size: 18px; 
+  line-height: 1;
+  color: #555;
+  font-weight: 700;
+}
+body.dark .icon { color: #ccc; }
 
 .label {
   font-size: 12px; font-weight: 600;

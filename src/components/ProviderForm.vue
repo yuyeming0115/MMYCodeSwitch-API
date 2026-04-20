@@ -47,6 +47,7 @@
             <n-button @click="doParse">{{ t('parse') }}</n-button>
             <span v-if="parseResult" style="margin-left:8px;font-size:12px;color:#888">
               URL: {{ parseResult.baseUrl ?? '-' }} | Key: {{ parseResult.apiKey ? '***' : '-' }}
+              <template v-if="parseResult.source"> | <span style="color:#18a058">{{ parseResult.source }}</span></template>
             </span>
             <n-button v-if="parseResult" text style="margin-left:8px" @click="applyParse">{{ t('apply') }}</n-button>
           </n-form-item>
@@ -79,7 +80,7 @@ const isEdit = ref(false)
 const saving = ref(false)
 const showPaste = ref(false)
 const pasteText = ref('')
-const parseResult = ref<{ baseUrl?: string; apiKey?: string } | null>(null)
+const parseResult = ref<{ baseUrl?: string; apiKey?: string; source?: string } | null>(null)
 const iconInput = ref<HTMLInputElement | null>(null)
 const iconPreview = ref('')
 const pendingIconData = ref<{ base64: string; ext: string } | null>(null)
@@ -99,7 +100,12 @@ watch(() => props.provider, (p) => {
   iconPreview.value = p?.icon_path ? resolveIconUrl(p.icon_path) : ''
   pendingIconData.value = null
   if (p) {
-    form.value = { name: p.name, icon_fallback: p.icon_fallback, provider_type: p.provider_type, api_key_plain: '', base_url: p.base_url ?? '', models_default: p.models?.default ?? '', notes: p.notes ?? '' }
+    // 兼容处理：provider_type 为空或非标准值时，如果有 base_url 则视为 api 类型
+    let pt = p.provider_type
+    if (pt !== 'login' && pt !== 'api') {
+      pt = (p.base_url) ? 'api' : 'login'
+    }
+    form.value = { name: p.name, icon_fallback: p.icon_fallback || p.name.slice(0, 2), provider_type: pt, api_key_plain: '', base_url: p.base_url ?? '', models_default: p.models?.default ?? '', notes: p.notes ?? '' }
   } else {
     form.value = { name: '', icon_fallback: '', provider_type: 'api', api_key_plain: '', base_url: '', models_default: '', notes: '' }
   }
@@ -129,7 +135,15 @@ function onIconFile(e: Event) {
 }
 
 async function doParse() {
-  parseResult.value = await invoke('parse_paste', { text: pasteText.value })
+  const raw = await invoke<{ baseUrl?: string; apiKey?: string }>('parse_paste', { text: pasteText.value })
+  // 构建来源描述
+  let source = ''
+  if (raw.baseUrl && raw.apiKey) {
+    source = '✅ 智能识别成功'
+  } else if (raw.baseUrl || raw.apiKey) {
+    source = '⚠️ 识别部分字段'
+  }
+  parseResult.value = raw ? { ...raw, source } : null
 }
 
 function applyParse() {

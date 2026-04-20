@@ -229,6 +229,44 @@ async fn test_provider(provider_id: String) -> Result<bool, String> {
     }
 }
 
+#[tauri::command]
+fn save_window_state(x: i32, y: i32, width: u32, height: u32, isDark: Option<bool>) -> Result<(), String> {
+    let path = config::mmycs_dir().join("window_state.json");
+    let mut state = if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .unwrap_or(serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    if let Some(d) = isDark { state["isDark"] = serde_json::json!(d); }
+    state["x"] = serde_json::json!(x);
+    state["y"] = serde_json::json!(y);
+    state["width"] = serde_json::json!(width);
+    state["height"] = serde_json::json!(height);
+    std::fs::write(&path, serde_json::to_string_pretty(&state).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_window_state() -> Option<serde_json::Value> {
+    let path = config::mmycs_dir().join("window_state.json");
+    if !path.exists() { return None; }
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+}
+
+#[tauri::command]
+fn hide_to_tray(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("main") {
+        win.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 // ── 自动检测 Claude Code 实例 ─────────────────────────────────────────────────
 #[tauri::command]
 fn detect_instances() -> Vec<DetectedInstance> {
@@ -258,30 +296,139 @@ fn detect_instances() -> Vec<DetectedInstance> {
     result
 }
 
+/// 从任意嵌套 JSON 中递归查找目标字段（支持 env 包裹、多层嵌套等中转站格式）
+fn deep_find(json: &serde_json::Value, targets: &[&str]) -> Option<(String, String)> {
+    // 1. 当前层直接匹配
+    let mut found_url = None;
+    let mut found_key = None;
+    for &target in targets {
+        if let Some(v) = json.get(target).and_then(|v| v.as_str()) {
+            if target.contains("URL") || target.contains("url") || target.contains("BASE") {
+                if found_url.is_none() { found_url = Some(v.to_string()); }
+            } else if target.contains("KEY") || target.contains("key") || target.contains("TOKEN") || target.contains("token") {
+                if found_key.is_none() { found_key = Some(v.to_string()); }
+            }
+        }
+    }
+    if found_url.is_some() || found_key.is_some() {
+        return Some((found_url.unwrap_or_default(), found_key.unwrap_or_default()));
+    }
+
+    // 2. 递归子节点（Object 的每个 value / Array 的每个元素）
+    match json {
+        serde_json::Value::Object(map) => {
+            for (_k, v) in map {
+                if let Some(result) = deep_find(v, targets) { return Some(result); }
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                if let Some(result) = deep_find(item, targets) { return Some(result); }
+            }
+        }
+        _ => {}
+    }
+    None
+}
+
+/// 已知的目标字段名列表——覆盖 Anthropic / OpenAI / 中转站常见命名
+const KNOWN_URL_FIELDS: &[&str] = &[
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_API_BASE",
+    "OPENAI_BASE_URL",
+    "OPENAI_API_BASE",
+    "API_BASE_URL",
+    "BASE_URL",
+    "baseUrl",
+    "base_url",
+    "apiBase",
+    "endpoint",
+    "ENDPOINT",
+];
+
+const KNOWN_KEY_FIELDS: &[&str] = &[
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "OPENAI_AUTH_TOKEN",
+    "API_KEY",
+    "apiKey",
+    "api_key",
+    "AUTH_TOKEN",
+    "authToken",
+    "auth_token",
+    "token",
+    "TOKEN",
+    "ACCESS_TOKEN",
+    "access_token",
+];
+
 #[tauri::command]
 fn parse_paste(text: String) -> serde_json::Value {
     let mut result = serde_json::json!({ "baseUrl": null, "apiKey": null });
+
+    // ── 策略1: 整体作为 JSON 递归深挖（支持嵌套/中转站格式）──
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+        // 合并 URL 和 KEY 目标字段
+        let all_targets: Vec<&str> = KNOWN_URL_FIELDS.iter().chain(KNOWN_KEY_FIELDS.iter()).copied().collect();
+        if let Some((url, key)) = deep_find(&json, &all_targets) {
+            if !url.is_empty() { result["baseUrl"] = serde_json::Value::String(url); }
+            if !key.is_empty() { result["apiKey"] = serde_json::Value::String(key); }
+            // 如果已经找到全部，直接返回；否则继续用行级解析补充
+            if !result["baseUrl"].is_null() && !result["apiKey"].is_null() {
+                return result;
+            }
+        }
+    }
+
+    // ── 策略2: 逐行解析（兼容 export 语句、裸值、扁平 JSON）──
     for line in text.lines() {
         let line = line.trim();
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-            if let Some(url) = json.get("ANTHROPIC_BASE_URL").and_then(|v| v.as_str()) {
-                result["baseUrl"] = serde_json::Value::String(url.to_string());
+        if result["baseUrl"].is_null() || result["apiKey"].is_null() {
+            // 2a. 单行 JSON 对象
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
+                let all_targets: Vec<&str> = KNOWN_URL_FIELDS.iter().chain(KNOWN_KEY_FIELDS.iter()).copied().collect();
+                if let Some((url, key)) = deep_find(&json, &all_targets) {
+                    if !url.is_empty() && result["baseUrl"].is_null() { result["baseUrl"] = serde_json::Value::String(url); }
+                    if !key.is_empty() && result["apiKey"].is_null() { result["apiKey"] = serde_json::Value::String(key); }
+                    continue;
+                }
             }
-            if let Some(key) = json.get("ANTHROPIC_AUTH_TOKEN").and_then(|v| v.as_str()) {
-                result["apiKey"] = serde_json::Value::String(key.to_string());
+
+            // 2b. bash export 语句
+            if line.starts_with("export ") && result["baseUrl"].is_null() {
+                for &field in KNOWN_URL_FIELDS {
+                    let prefix = format!("export {}=", field);
+                    if let Some(rest) = line.strip_prefix(&prefix) {
+                        result["baseUrl"] = serde_json::Value::String(rest.trim_matches('"').trim_matches('\'').to_string());
+                        break;
+                    }
+                }
             }
-        }
-        if line.starts_with("export ANTHROPIC_BASE_URL=") {
-            result["baseUrl"] = serde_json::Value::String(line["export ANTHROPIC_BASE_URL=".len()..].trim_matches('"').to_string());
-        }
-        if line.starts_with("export ANTHROPIC_AUTH_TOKEN=") {
-            result["apiKey"] = serde_json::Value::String(line["export ANTHROPIC_AUTH_TOKEN=".len()..].trim_matches('"').to_string());
-        }
-        if line.starts_with("https://") && result["baseUrl"].is_null() {
-            result["baseUrl"] = serde_json::Value::String(line.to_string());
-        }
-        if (line.starts_with("sk-") || line.len() > 20) && result["apiKey"].is_null() && !line.contains(' ') && !line.starts_with("https://") {
-            result["apiKey"] = serde_json::Value::String(line.to_string());
+            if line.starts_with("export ") && result["apiKey"].is_null() {
+                for &field in KNOWN_KEY_FIELDS {
+                    let prefix = format!("export {}=", field);
+                    if let Some(rest) = line.strip_prefix(&prefix) {
+                        result["apiKey"] = serde_json::Value::String(rest.trim_matches('"').trim_matches('\'').to_string());
+                        break;
+                    }
+                }
+            }
+
+            // 2c. 裸 URL
+            if (line.starts_with("https://") || line.starts_with("http://")) && result["baseUrl"].is_null() {
+                result["baseUrl"] = serde_json::Value::String(line.to_string());
+            }
+
+            // 2d. 裸 Key（sk- 开头或长字符串）
+            if (line.starts_with("sk-") || line.len() > 20)
+                && result["apiKey"].is_null()
+                && !line.contains(' ')
+                && !(line.starts_with("https://") || line.starts_with("http://"))
+                && !line.starts_with("export ")
+                && !line.starts_with("{") {
+                result["apiKey"] = serde_json::Value::String(line.to_string());
+            }
         }
     }
     result
@@ -413,6 +560,56 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             setup_tray(&app.handle())?;
+
+            // ── 恢复上次窗口尺寸和位置 ──
+            if let Some(win) = app.get_webview_window("main") {
+                let state_path = config::mmycs_dir().join("window_state.json");
+                if state_path.exists() {
+                    if let Ok(s) = std::fs::read_to_string(&state_path) {
+                        if let Ok(state) = serde_json::from_str::<serde_json::Value>(&s) {
+                            let _ = win.set_size(tauri::LogicalSize::new(
+                                state["width"].as_u64().unwrap_or(900) as u32,
+                                state["height"].as_u64().unwrap_or(620) as u32,
+                            ));
+                            // 只在有合理坐标时才恢复位置（避免屏幕外）
+                            if let (Some(x), Some(y)) = (state["x"].as_i64(), state["y"].as_i64()) {
+                                if x >= -100 && y >= -100 {
+                                    let _ = win.set_position(tauri::LogicalPosition::new(x as i32, y as i32));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 监听窗口关闭事件：阻止默认关闭 → 保存状态 → 隐藏到托盘
+                let win_clone = win.clone();
+                let path_clone = state_path.clone();
+                win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        // ★ 关键：阻止默认关闭行为
+                        api.prevent_close();
+
+                        // 1. 保存窗口状态
+                        if let Ok(pos) = win_clone.outer_position() {
+                            if let Ok(size) = win_clone.outer_size() {
+                                let mut state = if path_clone.exists() {
+                                    std::fs::read_to_string(&path_clone).ok()
+                                        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                                        .unwrap_or(serde_json::json!({}))
+                                } else { serde_json::json!({}) };
+                                state["x"] = serde_json::json!(pos.x);
+                                state["y"] = serde_json::json!(pos.y);
+                                state["width"] = serde_json::json!(size.width);
+                                state["height"] = serde_json::json!(size.height);
+                                let _ = std::fs::write(&path_clone, serde_json::to_string_pretty(&state).unwrap_or_default());
+                            }
+                        }
+                        // 2. 隐藏到托盘
+                        let _ = win_clone.hide().map_err(|e| eprintln!("hide failed: {}", e));
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -429,6 +626,9 @@ pub fn run() {
             test_provider,
             detect_instances,
             save_provider_icon,
+            save_window_state,
+            get_window_state,
+            hide_to_tray,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

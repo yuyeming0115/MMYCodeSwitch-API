@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useMessage, useDialog } from 'naive-ui'
 import { useAppStore, type Provider } from '../stores/app'
 import { i18n } from '../i18n'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import ProviderGrid from './ProviderGrid.vue'
 import ProviderForm from './ProviderForm.vue'
 import Settings from './Settings.vue'
@@ -22,10 +23,50 @@ const isDark = defineModel<boolean>('isDark', { default: false })
 onMounted(async () => {
   await store.init()
   i18n.global.locale.value = store.config.language as 'zh' | 'en'
+
+  // 恢复深浅色模式状态
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const saved = await invoke<{ isDark?: boolean } | null>('get_window_state') as any
+    if (saved && typeof saved.isDark === 'boolean') {
+      isDark.value = saved.isDark
+    }
+  } catch (_) { /* 首次运行无状态文件 */ }
+})
+
+// 监听深浅模式变化，自动保存
+watch(isDark, async (val) => {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const pos = await appWindow.outerPosition()
+    const size = await appWindow.outerSize()
+    await invoke('save_window_state', { x: pos.x, y: pos.y, width: size.width, height: size.height, isDark: val })
+  } catch (_) {}
 })
 
 const activeInstance = computed(() => store.activeInstance())
 const activeProviderId = computed(() => activeInstance.value?.active_provider_id)
+const appWindow = getCurrentWindow()
+const isMaxed = ref(false)
+
+async function toggleMax() {
+  if (await appWindow.isMaximized()) {
+    await appWindow.unmaximize()
+  } else {
+    await appWindow.maximize()
+  }
+}
+
+async function doCloseWindow() {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('hide_to_tray')
+  } catch (e) {
+    // fallback：直接调用前端 hide
+    console.error('hide_to_tray failed:', e)
+    await appWindow.hide().catch(() => {})
+  }
+}
 
 function openAdd() {
   editingProvider.value = undefined
@@ -100,6 +141,16 @@ const statusInfo = computed(() => t('right_click_hint'))
 
 <template>
   <div class="app">
+    <!-- 自定义标题栏 -->
+    <div class="titlebar">
+      <span class="titlebar-title">MMYCodeSwitch-API</span>
+      <div class="titlebar-controls">
+        <button class="titlebar-btn" @click="appWindow.minimize()">─</button>
+        <button class="titlebar-btn" @click="toggleMax">□</button>
+        <button class="titlebar-btn close" @click="doCloseWindow">✕</button>
+      </div>
+    </div>
+
     <!-- 主页面 -->
     <div v-if="currentPage === 'main'" class="page-main">
       <div class="content">
