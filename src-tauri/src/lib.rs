@@ -1,5 +1,5 @@
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{Menu, MenuItem, MenuBuilder, SubmenuBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
@@ -271,58 +271,77 @@ fn build_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let cfg = config::load_app_config().unwrap_or_default();
     let active_id = cfg.instances.first().and_then(|i| i.active_provider_id.clone());
 
-    let mut items: Vec<Box<dyn tauri::menu::IsMenuItem<tauri::Wry>>> = vec![];
+    // ── "启动平台" 子菜单（Builder 模式）────────────────────────
+    let mut platform_builder = SubmenuBuilder::new(app, "启动平台");
     for p in &providers {
         let label = if Some(&p.id) == active_id.as_ref() {
             format!("✓ {}", p.name)
         } else {
             p.name.clone()
         };
-        let item = MenuItem::with_id(app, &p.id, label, true, None::<&str>)?;
-        items.push(Box::new(item));
+        platform_builder = platform_builder.text(&p.id, label);
     }
-    let sep = tauri::menu::PredefinedMenuItem::separator(app)?;
-    items.push(Box::new(sep));
-    let quit = MenuItem::with_id(app, "__quit__", "退出", true, None::<&str>)?;
-    items.push(Box::new(quit));
+    if providers.is_empty() {
+        platform_builder = platform_builder.text("__empty__", "(无平台)");
+    }
+    let platform_sub = platform_builder.build()?;
 
-    let menu = Menu::with_items(app, &items.iter().map(|i| i.as_ref()).collect::<Vec<_>>())?;
+    // ── 顶层菜单：显示主窗口 | 启动平台▸ | 退出 ───────────────
+    let show_win = MenuItem::with_id(app, "__show__", "显示主窗口", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "__quit__", "退出", true, None::<&str>)?;
+
+    let menu = MenuBuilder::new(app)
+        .item(&show_win)
+        .item(&platform_sub)
+        .item(&quit)
+        .build()?;
 
     TrayIconBuilder::new()
         .menu(&menu)
         .tooltip("MMYCodeSwitch-API")
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
-            if id == "__quit__" {
-                app.exit(0);
-                return;
-            }
-            let provider_id = id.to_string();
-            let cfg = config::load_app_config().unwrap_or_default();
-            if let Some(inst) = cfg.instances.first() {
-                let config_dir = inst.config_dir.clone();
-                let _ = (|| -> Result<(), String> {
-                    let providers = config::load_providers().map_err(|e| e.to_string())?;
-                    let provider = providers.iter().find(|p| p.id == provider_id).ok_or("not found")?;
-                    let api_key_plain = if provider.provider_type == "api" {
-                        if let Some(enc) = &provider.api_key_encrypted {
-                            let key = config::get_or_create_key().map_err(|e| e.to_string())?;
-                            Some(crypto::decrypt(enc, &key).map_err(|e| e.to_string())?)
-                        } else { None }
-                    } else { None };
-                    inject::inject(&config_dir, provider, api_key_plain.as_deref()).map_err(|e| e.to_string())?;
-                    let mut cfg2 = config::load_app_config().map_err(|e| e.to_string())?;
-                    for inst in &mut cfg2.instances {
-                        if inst.config_dir == config_dir {
-                            inst.active_provider_id = Some(provider_id.clone());
-                        }
+            match id {
+                "__show__" => {
+                    if let Some(win) = app.get_webview_window("main") {
+                        let _ = win.show();
+                        let _ = win.set_focus();
                     }
-                    config::save_app_config(&cfg2).map_err(|e| e.to_string())
-                })();
-            }
-            // 重建托盘菜单以更新勾选状态
-            if let Some(tray) = app.tray_by_id("main") {
-                let _ = build_tray_menu(app, &tray);
+                }
+                "__quit__" => {
+                    app.exit(0);
+                }
+                "__empty__" => {}
+                _ => {
+                    // 点击了某个 provider → 切换
+                    let provider_id = id.to_string();
+                    let cfg = config::load_app_config().unwrap_or_default();
+                    if let Some(inst) = cfg.instances.first() {
+                        let config_dir = inst.config_dir.clone();
+                        let _ = (|| -> Result<(), String> {
+                            let providers = config::load_providers().map_err(|e| e.to_string())?;
+                            let provider = providers.iter().find(|p| p.id == provider_id).ok_or("not found")?;
+                            let api_key_plain = if provider.provider_type == "api" {
+                                if let Some(enc) = &provider.api_key_encrypted {
+                                    let key = config::get_or_create_key().map_err(|e| e.to_string())?;
+                                    Some(crypto::decrypt(enc, &key).map_err(|e| e.to_string())?)
+                                } else { None }
+                            } else { None };
+                            inject::inject(&config_dir, provider, api_key_plain.as_deref()).map_err(|e| e.to_string())?;
+                            let mut cfg2 = config::load_app_config().map_err(|e| e.to_string())?;
+                            for inst in &mut cfg2.instances {
+                                if inst.config_dir == config_dir {
+                                    inst.active_provider_id = Some(provider_id.clone());
+                                }
+                            }
+                            config::save_app_config(&cfg2).map_err(|e| e.to_string())
+                        })();
+                    }
+                    // 刷新整个托盘菜单以更新勾选状态
+                    if let Some(tray) = app.tray_by_id("main") {
+                        let _ = rebuild_tray_full(&app, &tray);
+                    }
+                }
             }
         })
         .on_tray_icon_event(|tray, event| {
@@ -334,26 +353,35 @@ fn build_tray(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         })
-        .id("main")
         .build(app)?;
     Ok(())
 }
 
-fn build_tray_menu(app: &tauri::AppHandle, tray: &tauri::tray::TrayIcon) -> Result<(), Box<dyn std::error::Error>> {
+/// 完整重建托盘菜单（切换 provider 后刷新勾选标记）
+fn rebuild_tray_full(app: &tauri::AppHandle, tray: &tauri::tray::TrayIcon) -> Result<(), Box<dyn std::error::Error>> {
     let providers = config::load_providers().unwrap_or_default();
     let cfg = config::load_app_config().unwrap_or_default();
     let active_id = cfg.instances.first().and_then(|i| i.active_provider_id.clone());
-    let mut items: Vec<Box<dyn tauri::menu::IsMenuItem<tauri::Wry>>> = vec![];
+
+    // 子菜单项
+    let mut platform_builder = SubmenuBuilder::new(app, "启动平台");
     for p in &providers {
         let label = if Some(&p.id) == active_id.as_ref() { format!("✓ {}", p.name) } else { p.name.clone() };
-        let item = MenuItem::with_id(app, &p.id, label, true, None::<&str>)?;
-        items.push(Box::new(item));
+        platform_builder = platform_builder.text(&p.id, label);
     }
-    let sep = tauri::menu::PredefinedMenuItem::separator(app)?;
-    items.push(Box::new(sep));
+    if providers.is_empty() {
+        platform_builder = platform_builder.text("__empty__", "(无平台)");
+    }
+    let platform_sub = platform_builder.build()?;
+
+    let show_win = MenuItem::with_id(app, "__show__", "显示主窗口", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "__quit__", "退出", true, None::<&str>)?;
-    items.push(Box::new(quit));
-    let menu = Menu::with_items(app, &items.iter().map(|i| i.as_ref()).collect::<Vec<_>>())?;
+    let menu = MenuBuilder::new(app)
+        .item(&show_win)
+        .item(&platform_sub)
+        .item(&quit)
+        .build()?;
+
     tray.set_menu(Some(menu))?;
     Ok(())
 }

@@ -37,9 +37,11 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
+import { useMessage } from 'naive-ui'
 import type { Provider } from '../stores/app'
 
 const { t } = useI18n()
+const msg = useMessage()
 defineProps<{ providers: Provider[]; activeProviderId?: string }>()
 const emit = defineEmits<{ switch: [p: Provider]; edit: [p: Provider]; delete: [p: Provider]; add: [] }>()
 
@@ -69,14 +71,25 @@ async function onMenuSelect(key: string) {
   else if (key === 'delete') emit('delete', menuTarget.value)
   else if (key === 'test') {
     const id = menuTarget.value.id
+    const name = menuTarget.value.name
     testState.value[id] = 'testing'
+    msg.loading(`正在测试「${name}」连通性...`, { duration: 0 })
     try {
       const ok = await invoke<boolean>('test_provider', { providerId: id })
       testState.value[id] = ok ? 'ok' : 'fail'
-    } catch {
+      if (ok) {
+        msg.success(`✅ 「${name}」连通正常`)
+      } else {
+        msg.warning(`⚠️ 「${name}」响应异常（可能 Key 无效或网络不通）`)
+      }
+    } catch (e) {
       testState.value[id] = 'fail'
+      msg.error(`❌ 「${name}」测试失败: ${e}`)
+    } finally {
+      // 关闭 loading toast
+      msg.destroyAll()
     }
-    setTimeout(() => { delete testState.value[id] }, 3000)
+    setTimeout(() => { delete testState.value[id] }, 4000)
   }
 }
 </script>

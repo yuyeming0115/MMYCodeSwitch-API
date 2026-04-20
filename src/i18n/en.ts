@@ -49,4 +49,6 @@ export default {
   test_fail: 'Failed',
   testing: 'Testing...',
   upload_icon: 'Upload Icon',
+  quick_setup: 'Quick Setup',
+  quick_setup_desc: 'Select a template, fill in API Key to generate config',
 }
