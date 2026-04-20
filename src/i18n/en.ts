@@ -74,6 +74,8 @@ export default {
   injecting: '⏳ Injecting config...',
   launching_cli: '🚀 Launching Claude Code CLI...',
   launch_failed: '❌ Failed to launch terminal: {msg}',
+  continue_dev: 'Continue Dev',
+  open_in_terminal: 'Open in Terminal',
   // Settings
   global_default_dir: 'Global Default Directory',
   global_default_dir_hint: 'Fallback directory when no project is selected (optional). Leave empty for ~/.claude',

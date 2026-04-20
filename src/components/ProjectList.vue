@@ -23,22 +23,35 @@
         :key="proj.id"
         class="proj-card"
       >
+        <!-- 左侧供应商图标（图片/首字母fallback） -->
+        <div class="proj-icon" :class="{ 'no-img': !providerIconUrl(proj) }" :style="!providerIconUrl(proj) ? { background: providerIconBg(proj.provider_id) } : {}">
+          <img v-if="providerIconUrl(proj)" class="proj-icon-img" :src="resolveIconUrl(providerIconUrl(proj)!)" :alt="proj.provider_name" />
+          <span v-else class="proj-icon-text">{{ providerFirstLetter(proj) }}</span>
+        </div>
+
+        <!-- 中间信息区 -->
         <div class="proj-info">
           <div class="proj-name" :title="proj.project_path || ''">{{ proj.name || '未知项目' }}</div>
           <div class="proj-meta">
-            <span class="proj-provider">
-              <span class="provider-dot"></span>
-              {{ proj.provider_name || '未知供应商' }}
-            </span>
+            <span class="proj-provider">{{ proj.provider_name || '未知供应商' }}</span>
             <span class="proj-time">{{ formatTime(proj.updated_at) }}</span>
           </div>
           <div class="proj-path" :title="proj.project_path || ''">{{ truncatePath(proj.project_path) }}</div>
         </div>
-        <button
-          class="remove-btn"
-          :title="t('remove_project')"
-          @click.stop="handleRemove(proj)"
-        >✕</button>
+
+        <!-- 右侧按钮组 -->
+        <div class="action-btns">
+          <button
+            class="launch-btn"
+            :title="t('continue_dev')"
+            @click.stop="handleLaunch(proj)"
+          >▶</button>
+          <button
+            class="remove-btn"
+            :title="t('remove_project')"
+            @click.stop="handleRemove(proj)"
+          >✕</button>
+        </div>
       </div>
     </div>
   </div>
@@ -48,18 +61,60 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDialog, useMessage } from 'naive-ui'
-import type { ActiveProject } from '../stores/app'
+import type { ActiveProject, Provider } from '../stores/app'
 
 const { t } = useI18n()
 const msg = useMessage()
 const dialog = useDialog()
 
-defineProps<{ projects: ActiveProject[] }>()
+const props = defineProps<{
+  projects: ActiveProject[]
+  providers?: Provider[]
+}>()
 const emit = defineEmits<{
   removed: [id: string]
+  launch: [projectPath: string]
 }>()
 
 const collapsed = ref(false)
+
+/// 获取供应商的 icon_path（有则返回路径，无则返回 null）
+function providerIconUrl(proj: ActiveProject): string | null {
+  const p = (props.providers ?? []).find(x => x.id === proj.provider_id)
+  return p?.icon_path ?? null
+}
+
+/// 将 icon_path 解析为完整 URL（与 ProviderGrid 保持一致）
+function resolveIconUrl(iconPath: string): string {
+  const normalized = iconPath.replace(/\\/g, '/')
+  // 绝对路径 → Tauri asset 协议
+  if (/^[A-Za-z]:\/|^\//.test(normalized)) {
+    return `asset://localhost/${normalized}`
+  }
+  // 相对路径（内置图标）→ public 目录
+  return `/${normalized}`
+}
+
+/// 没有图片时显示供应商名称首字母
+function providerFirstLetter(proj: ActiveProject): string {
+  const name = proj.provider_name || '?'
+  return name.charAt(0).toUpperCase()
+}
+
+/// 根据provider_id生成稳定的渐变底色（hash取色）
+const ICON_COLORS = [
+  '#667eea', '#f093fb', '#4facfe', '#43e97b',
+  '#fa709a', '#fee140', '#30cfd0', '#a8edea',
+  '#ff9a9e', '#fecfef', '#ffecd2', '#fcb69f',
+  '#a18cd1', '#fbc2eb', '#fad0c4', '#ffd1ff',
+]
+function providerIconBg(providerId: string): string {
+  let hash = 0
+  for (let i = 0; i < providerId.length; i++) {
+    hash = ((hash << 5) - hash + providerId.charCodeAt(i)) | 0
+  }
+  return ICON_COLORS[Math.abs(hash) % ICON_COLORS.length]
+}
 
 function formatTime(iso: string): string {
   if (!iso) return ''
@@ -90,6 +145,12 @@ function handleRemove(proj: ActiveProject) {
       msg.success(`${t('project_removed')}`)
     },
   })
+}
+
+function handleLaunch(proj: ActiveProject) {
+  if (proj.project_path) {
+    emit('launch', proj.project_path)
+  }
 }
 </script>
 
@@ -129,9 +190,6 @@ body.dark .collapse-btn:hover { background: #333; }
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 240px;
-  overflow-y: auto;
-  padding-right: 4px;
 }
 
 .empty-state {
@@ -145,11 +203,12 @@ body.dark .collapse-btn:hover { background: #333; }
 }
 .empty-icon { font-size: 28px; }
 
+/* ====== 卡片主体 ====== */
 .proj-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 10px 12px;
   border-radius: 12px;
   border: 1.5px solid #e8e8e8;
   background: #fff;
@@ -158,7 +217,7 @@ body.dark .collapse-btn:hover { background: #333; }
 }
 .proj-card:hover {
   border-color: #c0c0c0;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.07);
 }
 body.dark .proj-card {
   background: #252525;
@@ -166,6 +225,37 @@ body.dark .proj-card {
 }
 body.dark .proj-card:hover { border-color: #555; }
 
+/* ====== 左侧供应商图标（图片/首字母） ====== */
+.proj-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+/* 有图标图片时 */
+.proj-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+/* 无图标时（显示首字母 + 渐变底色） */
+.proj-icon.no-img {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+}
+.proj-icon-text {
+  user-select: none;
+}
+
+/* ====== 信息区 ====== */
 .proj-info { flex: 1; min-width: 0; }
 .proj-name {
   font-size: 13px;
@@ -185,17 +275,8 @@ body.dark .proj-name { color: #ddd; }
   font-size: 11px;
 }
 .proj-provider {
-  display: flex;
-  align-items: center;
-  gap: 4px;
   color: #18a058;
   font-weight: 500;
-}
-.provider-dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: #18a058;
-  flex-shrink: 0;
 }
 .proj-time { color: #bbb; }
 
@@ -208,8 +289,37 @@ body.dark .proj-name { color: #ddd; }
   white-space: nowrap;
 }
 
-.remove-btn {
+/* ====== 右侧按钮组 ====== */
+.action-btns {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.proj-card:hover .action-btns { opacity: 1; }
+
+.launch-btn {
+  width: 28px; height: 28px;
+  border-radius: 7px;
+  border: none;
+  background: #18a058;
+  color: #fff;
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s, transform .1s;
+}
+.launch-btn:hover {
+  background: #0e7a3f;
+  transform: scale(1.08);
+}
+.launch-btn:active { transform: scale(0.95); }
+
+.remove-btn {
   width: 24px; height: 24px;
   border-radius: 6px;
   border: none;
@@ -220,13 +330,16 @@ body.dark .proj-name { color: #ddd; }
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
   transition: all .15s;
 }
-.proj-card:hover .remove-btn { opacity: 1; }
 .remove-btn:hover {
   background: #fee2e2;
   color: #d03050;
 }
 body.dark .remove-btn:hover { background: #3a1515; }
+
+/* 移动端/小屏：按钮常驻显示 */
+@media (max-width: 500px) {
+  .action-btns { opacity: 1 !important; }
+}
 </style>

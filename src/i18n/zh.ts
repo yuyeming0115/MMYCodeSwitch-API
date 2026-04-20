@@ -74,6 +74,8 @@ export default {
   injecting: '⏳ 正在注入配置...',
   launching_cli: '🚀 正在启动 Claude Code CLI...',
   launch_failed: '❌ 启动终端失败：{msg}',
+  continue_dev: '继续开发',
+  open_in_terminal: '在终端中打开',
   // 设置页
   global_default_dir: '全局默认目录',
   global_default_dir_hint: '未选择具体项目时的 fallback 目录（可选），留空则使用 ~/.claude',

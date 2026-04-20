@@ -180,6 +180,18 @@ async function handleRemoveProject(id: string) {
   await store.removeActiveProject(id)
 }
 
+/// 继续开发：在项目目录重新打开 Claude Code CLI
+async function handleLaunchProject(projectPath: string) {
+  try {
+    msg.info(t('launching_cli'), { duration: 3000 })
+    await invoke('launch_terminal', { workdir: projectPath })
+    console.log('[handleLaunch] CLI 启动成功:', projectPath)
+  } catch (e) {
+    console.error('[handleLaunch] CLI 启动失败:', e)
+    msg.warning(t('launch_failed', { msg: (e instanceof Error ? e.message : String(e)) }), { duration: 4000 })
+  }
+}
+
 // 工具函数：规范化路径（统一 / 分隔，防御空值）
 function normalizePath(path: string | undefined | null): string {
   if (!path) return ''
@@ -230,7 +242,9 @@ const statusInfo = computed(() => t('right_click_hint'))
         <!-- 已打开项目列表 -->
         <ProjectList
           :projects="store.activeProjects"
+          :providers="store.providers"
           @removed="handleRemoveProject"
+          @launch="handleLaunchProject"
         />
       </div>
 
