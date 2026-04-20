@@ -44,18 +44,6 @@
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
       "timestampUrl": ""
-    },
-    "nsis": {
-      "installMode": "currentUser",
-      "languages": ["SimpChinese", "English"],
-      "displayLanguageSelector": false,
-      "installerIcon": "icons/icon.ico",
-      "headerImage": "icons/header.bmp",
-      "sidebarImage": "icons/installerSidebar.bmp",
-      "uninstallerIcon": "icons/icon.ico",
-      "license": "../LICENSE"
-    },
-    "macOS": {},
-    "linux": {}
+    }
   }
 }

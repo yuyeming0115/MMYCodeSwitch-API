@@ -70,8 +70,14 @@ npm run tauri dev
 
 ### 方式一：一键打包脚本（推荐）
 
-使用项目内置的 PowerShell 脚本，自动完成全流程构建：
+使用项目内置的打包脚本，自动完成全流程构建：
 
+**🖱️ Windows 双击运行（最简单）：**
+```
+双击 build.bat 即可开始打包
+```
+
+**💻 PowerShell 命令行：**
 ```powershell
 # Release 模式（默认）— 生成优化后的安装包
 .\build.ps1
@@ -132,7 +138,8 @@ MMYCodeSwitch-API/
 ├── index.html              # HTML 入口
 ├── package.json            # 前端依赖
 ├── vite.config.ts          # Vite 构建配置
-└── build.ps1               # 一键打包脚本
+├── build.ps1               # 一键打包脚本 (PowerShell)
+├── build.bat               # 双击打包入口 (调用 build.ps1)
 ```
 
 ### 可用命令
