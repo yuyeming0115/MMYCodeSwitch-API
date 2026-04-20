@@ -8,9 +8,13 @@
       @click="emit('switch', p)"
       @contextmenu.prevent="e => openMenu(e, p)"
     >
-      <div class="icon">{{ p.icon_fallback }}</div>
+      <img v-if="p.icon_path" :src="`asset://localhost/${p.icon_path.replace(/\\/g, '/')}`" class="icon-img" />
+      <div v-else class="icon">{{ p.icon_fallback }}</div>
       <div class="label">{{ p.name }}</div>
       <div v-if="p.id === activeProviderId" class="badge">✓</div>
+      <div v-if="testState[p.id]" class="test-badge" :class="testState[p.id]">
+        {{ testState[p.id] === 'testing' ? '…' : testState[p.id] === 'ok' ? '✓' : '✗' }}
+      </div>
     </div>
     <div class="card add-card" @click="emit('add')">
       <div class="icon">+</div>
@@ -32,6 +36,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { invoke } from '@tauri-apps/api/core'
 import type { Provider } from '../stores/app'
 
 const { t } = useI18n()
@@ -42,9 +47,11 @@ const menuVisible = ref(false)
 const menuX = ref(0)
 const menuY = ref(0)
 const menuTarget = ref<Provider | null>(null)
+const testState = ref<Record<string, 'testing' | 'ok' | 'fail'>>({})
 
 const menuOptions = [
   { label: () => t('edit'), key: 'edit' },
+  { label: () => t('test_connection'), key: 'test' },
   { label: () => t('delete'), key: 'delete', props: { style: 'color:#d03050' } },
 ]
 
@@ -55,11 +62,22 @@ function openMenu(e: MouseEvent, p: Provider) {
   menuVisible.value = true
 }
 
-function onMenuSelect(key: string) {
+async function onMenuSelect(key: string) {
   menuVisible.value = false
   if (!menuTarget.value) return
   if (key === 'edit') emit('edit', menuTarget.value)
   else if (key === 'delete') emit('delete', menuTarget.value)
+  else if (key === 'test') {
+    const id = menuTarget.value.id
+    testState.value[id] = 'testing'
+    try {
+      const ok = await invoke<boolean>('test_provider', { providerId: id })
+      testState.value[id] = ok ? 'ok' : 'fail'
+    } catch {
+      testState.value[id] = 'fail'
+    }
+    setTimeout(() => { delete testState.value[id] }, 3000)
+  }
 }
 </script>
 
@@ -76,6 +94,11 @@ function onMenuSelect(key: string) {
 .icon { font-size: 28px; font-weight: 700; color: #333; }
 .label { font-size: 12px; margin-top: 4px; text-align: center; color: #555; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge { position: absolute; top: 6px; right: 8px; color: #18a058; font-size: 14px; font-weight: 700; }
+.test-badge { position: absolute; bottom: 6px; right: 8px; font-size: 12px; font-weight: 700; }
+.test-badge.testing { color: #aaa; }
+.test-badge.ok { color: #18a058; }
+.test-badge.fail { color: #d03050; }
+.icon-img { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; }
 .add-card { border-style: dashed; background: #f5f5f5; }
 .add-card .icon { color: #aaa; }
 </style>

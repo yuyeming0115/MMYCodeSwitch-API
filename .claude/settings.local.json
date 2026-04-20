@@ -5,7 +5,8 @@
       "Bash(git *)",
       "Bash(npm --version)",
       "Bash(rustc --version)",
-      "Bash(cargo --version)"
+      "Bash(cargo --version)",
+      "Bash(cargo check *)"
     ]
   }
 }

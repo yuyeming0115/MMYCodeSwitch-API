@@ -11,6 +11,7 @@ export interface Provider {
   api_key_encrypted?: string
   models?: Record<string, string>
   notes?: string
+  icon_path?: string
   created_at: string
   updated_at: string
 }

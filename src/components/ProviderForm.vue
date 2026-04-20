@@ -5,7 +5,10 @@
         <n-input v-model:value="form.name" />
       </n-form-item>
       <n-form-item :label="t('icon_fallback')">
-        <n-input v-model:value="form.icon_fallback" maxlength="3" />
+        <n-input v-model:value="form.icon_fallback" maxlength="3" style="width:80px" />
+        <n-button text style="margin-left:8px" @click="triggerIconUpload">{{ t('upload_icon') }}</n-button>
+        <input ref="iconInput" type="file" accept=".png,.svg" style="display:none" @change="onIconFile" />
+        <img v-if="iconPreview" :src="iconPreview" style="width:32px;height:32px;border-radius:6px;margin-left:8px;object-fit:cover" />
       </n-form-item>
       <n-form-item label="类型">
         <n-radio-group v-model:value="form.provider_type">
@@ -71,6 +74,9 @@ const isEdit = ref(false)
 const showPaste = ref(false)
 const pasteText = ref('')
 const parseResult = ref<{ baseUrl?: string; apiKey?: string } | null>(null)
+const iconInput = ref<HTMLInputElement | null>(null)
+const iconPreview = ref('')
+const pendingIconData = ref<{ base64: string; ext: string } | null>(null)
 
 const form = ref({
   name: '',
@@ -84,20 +90,30 @@ const form = ref({
 
 watch(() => props.provider, (p) => {
   isEdit.value = !!p
+  iconPreview.value = p?.icon_path ? `asset://localhost/${p.icon_path.replace(/\\/g, '/')}` : ''
+  pendingIconData.value = null
   if (p) {
-    form.value = {
-      name: p.name,
-      icon_fallback: p.icon_fallback,
-      provider_type: p.provider_type,
-      api_key_plain: '',
-      base_url: p.base_url ?? '',
-      models_default: p.models?.default ?? '',
-      notes: p.notes ?? '',
-    }
+    form.value = { name: p.name, icon_fallback: p.icon_fallback, provider_type: p.provider_type, api_key_plain: '', base_url: p.base_url ?? '', models_default: p.models?.default ?? '', notes: p.notes ?? '' }
   } else {
     form.value = { name: '', icon_fallback: '', provider_type: 'api', api_key_plain: '', base_url: '', models_default: '', notes: '' }
   }
 }, { immediate: true })
+
+function triggerIconUpload() { iconInput.value?.click() }
+
+function onIconFile(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  const ext = file.name.endsWith('.svg') ? 'svg' : 'png'
+  const reader = new FileReader()
+  reader.onload = ev => {
+    const dataUrl = ev.target?.result as string
+    iconPreview.value = dataUrl
+    // strip data:...;base64, prefix
+    pendingIconData.value = { base64: dataUrl.split(',')[1], ext }
+  }
+  reader.readAsDataURL(file)
+}
 
 async function doParse() {
   parseResult.value = await invoke('parse_paste', { text: pasteText.value })
@@ -112,6 +128,11 @@ function applyParse() {
 
 async function submit() {
   if (!form.value.name) { msg.error(t('required')); return }
+  const id = props.provider?.id ?? `provider_${Date.now()}`
+  let icon_path: string | null = props.provider?.icon_path ?? null
+  if (pendingIconData.value) {
+    icon_path = await invoke<string>('save_provider_icon', { providerId: id, dataBase64: pendingIconData.value.base64, ext: pendingIconData.value.ext })
+  }
   const input = {
     id: props.provider?.id ?? null,
     name: form.value.name,
@@ -121,6 +142,7 @@ async function submit() {
     api_key_plain: form.value.api_key_plain || null,
     models: form.value.models_default ? { default: form.value.models_default } : null,
     notes: form.value.notes || null,
+    icon_path,
   }
   await store.upsertProvider(input)
   msg.success(t('save_success'))
