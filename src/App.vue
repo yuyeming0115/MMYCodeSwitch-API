@@ -21,8 +21,28 @@ watchEffect(() => {
 
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
+html {
+  /* 全局美化所有滚动条 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128,128,128,0.2) transparent;
+}
+html::-webkit-scrollbar { width: 6px; }
+html::-webkit-scrollbar-track { background: transparent; }
+html::-webkit-scrollbar-thumb {
+  background: rgba(128,128,128,0.2);
+  border-radius: 10px;
+}
+html::-webkit-scrollbar-thumb:hover {
+  background: rgba(128,128,128,0.4);
+}
+
 body { font-family: Inter, system-ui, sans-serif; background: #f5f5f5; color: #333; }
 body.dark { background: #1a1a1a; color: #eee; }
+/* 深色模式全局滚动条 */
+body.dark,
+body.dark html { scrollbar-color: rgba(200,200,200,0.12) transparent; }
+body.dark ::-webkit-scrollbar-thumb { background: rgba(200,200,200,0.12); }
+body.dark ::-webkit-scrollbar-thumb:hover { background: rgba(200,200,200,0.25); }
 .app { display: flex; flex-direction: column; height: 100vh; }
 
 /* 自定义标题栏 - 支持 Tauri 拖拽 */

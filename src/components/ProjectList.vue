@@ -159,6 +159,8 @@ function handleLaunch(proj: ActiveProject) {
   margin-top: 16px;
   border-top: 1px solid #e8e8e8;
   padding-top: 12px;
+  display: flex;
+  flex-direction: column;
 }
 body.dark .project-list-section { border-color: #333; }
 
@@ -167,6 +169,10 @@ body.dark .project-list-section { border-color: #333; }
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: inherit; /* 跟随父级背景色 */
 }
 .section-title {
   font-size: 13px;
@@ -190,6 +196,22 @@ body.dark .collapse-btn:hover { background: #333; }
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: 55vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+  /* 美化滚动条 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128,128,128,0.25) transparent;
+}
+.project-cards::-webkit-scrollbar { width: 5px; }
+.project-cards::-webkit-scrollbar-track { background: transparent; }
+.project-cards::-webkit-scrollbar-thumb {
+  background: rgba(128,128,128,0.25);
+  border-radius: 10px;
+}
+.project-cards::-webkit-scrollbar-thumb:hover {
+  background: rgba(128,128,128,0.45);
 }
 
 .empty-state {
@@ -342,4 +364,9 @@ body.dark .remove-btn:hover { background: #3a1515; }
 @media (max-width: 500px) {
   .action-btns { opacity: 1 !important; }
 }
+
+/* 深色模式滚动条 */
+body.dark .project-cards { scrollbar-color: rgba(200,200,200,0.12) transparent; }
+body.dark .project-cards::-webkit-scrollbar-thumb { background: rgba(200,200,200,0.12); }
+body.dark .project-cards::-webkit-scrollbar-thumb:hover { background: rgba(200,200,200,0.28); }
 </style>

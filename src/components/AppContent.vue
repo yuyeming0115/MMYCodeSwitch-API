@@ -289,14 +289,26 @@ const statusInfo = computed(() => t('right_click_hint'))
   height: 100vh;
 }
 .page-main {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: 1fr auto auto;
   height: 100vh;
 }
 .content {
-  flex: 1;
+  min-height: 0; /* 关键：允许 grid 子项收缩 */
   overflow-y: auto;
   padding: 8px 16px 0;
+  /* 全局美化滚动条 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128,128,128,0.25) transparent;
+}
+.content::-webkit-scrollbar { width: 5px; }
+.content::-webkit-scrollbar-track { background: transparent; }
+.content::-webkit-scrollbar-thumb {
+  background: rgba(128,128,128,0.25);
+  border-radius: 10px;
+}
+.content::-webkit-scrollbar-thumb:hover {
+  background: rgba(128,128,128,0.45);
 }
 .toolbar {
   display: flex;
@@ -328,4 +340,7 @@ body.dark .statusbar {
   color: #888;
   background: #1a1a1a;
 }
+body.dark .content { scrollbar-color: rgba(200,200,200,0.12) transparent; }
+body.dark .content::-webkit-scrollbar-thumb { background: rgba(200,200,200,0.12); }
+body.dark .content::-webkit-scrollbar-thumb:hover { background: rgba(200,200,200,0.28); }
 </style>
