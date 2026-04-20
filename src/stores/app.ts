@@ -26,12 +26,25 @@ export interface Instance {
 export interface AppConfig {
   language: string
   instances: Instance[]
+  default_config_dir?: string
+  active_projects: ActiveProject[]
+}
+
+export interface ActiveProject {
+  id: string
+  name: string
+  project_path: string
+  provider_id: string
+  provider_name: string
+  created_at: string
+  updated_at: string
 }
 
 export const useAppStore = defineStore('app', () => {
   const providers = ref<Provider[]>([])
-  const config = ref<AppConfig>({ language: 'zh', instances: [] })
+  const config = ref<AppConfig>({ language: 'zh', instances: [], active_projects: [] })
   const activeInstanceId = ref('default')
+  const activeProjects = ref<ActiveProject[]>([])
 
   const activeInstance = () => config.value.instances.find(i => i.id === activeInstanceId.value) ?? config.value.instances[0]
 
@@ -39,6 +52,7 @@ export const useAppStore = defineStore('app', () => {
     await invoke('init_app')
     await loadConfig()
     await loadProviders()
+    await loadActiveProjects()
   }
 
   async function loadConfig() {
@@ -50,6 +64,10 @@ export const useAppStore = defineStore('app', () => {
 
   async function loadProviders() {
     providers.value = await invoke<Provider[]>('get_providers')
+  }
+
+  async function loadActiveProjects() {
+    activeProjects.value = await invoke<ActiveProject[]>('get_active_projects')
   }
 
   async function upsertProvider(input: object) {
@@ -75,5 +93,27 @@ export const useAppStore = defineStore('app', () => {
     await loadConfig()
   }
 
-  return { providers, config, activeInstanceId, activeInstance, init, loadProviders, upsertProvider, deleteProvider, switchProvider, saveConfig }
+  /// 多项目模式：注入 API 到指定项目文件夹
+  async function injectToProject(projectPath: string, providerId: string) {
+    const result = await invoke<{
+      project: ActiveProject
+      was_existing: boolean
+    }>('inject_to_project', { projectPath, providerId })
+    await loadActiveProjects()
+    return result
+  }
+
+  /// 从已激活列表中移除项目（仅删除记录）
+  async function removeActiveProject(id: string) {
+    await invoke('remove_active_project', { id })
+    await loadActiveProjects()
+  }
+
+  return {
+    providers, config, activeInstanceId, activeInstance,
+    activeProjects,
+    init, loadProviders, upsertProvider, deleteProvider,
+    switchProvider, saveConfig,
+    injectToProject, removeActiveProject, loadActiveProjects,
+  }
 })

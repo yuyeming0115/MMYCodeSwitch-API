@@ -34,10 +34,33 @@ pub struct Instance {
     pub active_provider_id: Option<String>,
 }
 
+/// 已激活的项目绑定记录（多项目模式核心数据结构）
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ActiveProject {
+    pub id: String,
+    pub name: String,
+    #[serde(alias = "projectPath")]
+    pub project_path: String,
+    #[serde(alias = "providerId")]
+    pub provider_id: String,
+    #[serde(alias = "providerName")]
+    pub provider_name: String,
+    #[serde(alias = "createdAt")]
+    pub created_at: String,
+    #[serde(alias = "updatedAt")]
+    pub updated_at: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppConfig {
     pub language: String,
     pub instances: Vec<Instance>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "defaultConfigDir")]
+    pub default_config_dir: Option<String>,
+    #[serde(default)]
+    #[serde(rename = "activeProjects")]
+    pub active_projects: Vec<ActiveProject>,
 }
 
 impl Default for AppConfig {
@@ -52,6 +75,8 @@ impl Default for AppConfig {
                 config_dir: default_claude.to_string_lossy().to_string(),
                 active_provider_id: None,
             }],
+            default_config_dir: None,
+            active_projects: vec![],
         }
     }
 }
@@ -127,4 +152,20 @@ pub fn delete_provider(id: &str) -> Result<()> {
     let path = mmycs_dir().join("providers").join(format!("{}.json", id));
     if path.exists() { std::fs::remove_file(path)?; }
     Ok(())
+}
+
+// ── ActiveProject 辅助函数 ───────────────────────────────────────────────
+
+/// 规范化项目路径（统一使用 / 分隔，去除尾部斜杠）
+pub fn normalize_project_path(path: &str) -> String {
+    let p = path.replace('\\', "/");
+    p.trim_end_matches('/').to_string()
+}
+
+/// 根据路径查找已激活的项目
+pub fn find_active_project_by_path(cfg: &AppConfig, path: &str) -> Option<usize> {
+    let norm = normalize_project_path(path);
+    cfg.active_projects
+        .iter()
+        .position(|p| normalize_project_path(&p.project_path) == norm)
 }

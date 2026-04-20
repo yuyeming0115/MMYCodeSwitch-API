@@ -8,7 +8,7 @@ mod config;
 mod crypto;
 mod inject;
 
-use config::{AppConfig, Provider};
+use config::{AppConfig, ActiveProject, Provider};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -113,6 +113,87 @@ fn switch_provider(config_dir: String, provider_id: String) -> Result<(), String
     }
     config::save_app_config(&cfg).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// ── 多项目模式：注入 API 到指定项目目录 ───────────────────────────────
+#[derive(Serialize)]
+pub struct InjectToProjectResult {
+    pub project: ActiveProject,
+    pub was_existing: bool,
+}
+
+#[tauri::command]
+fn inject_to_project(project_path: String, provider_id: String) -> Result<InjectToProjectResult, String> {
+    // 1. 规范化路径并构建 {project}/.claude 目录
+    let norm_path = config::normalize_project_path(&project_path);
+    let claude_dir = format!("{}/.claude", norm_path);
+
+    // 2. 加载 Provider 并解密 Key
+    let providers = config::load_providers().map_err(|e| e.to_string())?;
+    let provider = providers.iter().find(|p| p.id == provider_id)
+        .ok_or("Provider not found")?;
+    let api_key_plain = if provider.provider_type == "api" {
+        if let Some(enc) = &provider.api_key_encrypted {
+            let key = config::get_or_create_key().map_err(|e| e.to_string())?;
+            Some(crypto::decrypt(enc, &key).map_err(|e| e.to_string())?)
+        } else { None }
+    } else { None };
+
+    // 3. 调用已有的 inject 函数写入 {project}/.claude/settings.json
+    inject::inject(&claude_dir, provider, api_key_plain.as_deref())
+        .map_err(|e| e.to_string())?;
+
+    // 4. 更新 active_projects 记录
+    let mut cfg = config::load_app_config().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    let project_name = std::path::Path::new(&norm_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("未知项目")
+        .to_string();
+
+    let existing_idx = config::find_active_project_by_path(&cfg, &norm_path);
+    let was_existing = existing_idx.is_some();
+
+    let project = if let Some(idx) = existing_idx {
+        // 更新已有记录
+        cfg.active_projects[idx].provider_id = provider_id.clone();
+        cfg.active_projects[idx].provider_name = provider.name.clone();
+        cfg.active_projects[idx].updated_at = now.clone();
+        cfg.active_projects[idx].clone()
+    } else {
+        // 新增记录
+        let new_proj = ActiveProject {
+            id: format!("proj_{}", chrono::Utc::now().timestamp_millis()),
+            name: project_name,
+            project_path: norm_path.clone(),
+            provider_id: provider_id.clone(),
+            provider_name: provider.name.clone(),
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        cfg.active_projects.push(new_proj.clone());
+        new_proj
+    };
+
+    config::save_app_config(&cfg).map_err(|e| e.to_string())?;
+
+    Ok(InjectToProjectResult { project, was_existing })
+}
+
+// ── 获取已激活项目列表 ────────────────────────────────────────────────
+#[tauri::command]
+fn get_active_projects() -> Result<Vec<ActiveProject>, String> {
+    let cfg = config::load_app_config().map_err(|e| e.to_string())?;
+    Ok(cfg.active_projects)
+}
+
+// ── 移除已激活项目（仅从列表删除，不影响 settings.json） ────────────────
+#[tauri::command]
+fn remove_active_project(id: String) -> Result<(), String> {
+    let mut cfg = config::load_app_config().map_err(|e| e.to_string())?;
+    cfg.active_projects.retain(|p| p.id != id);
+    config::save_app_config(&cfg).map_err(|e| e.to_string())
 }
 
 // ── 图标上传 ──────────────────────────────────────────────────────────────────
@@ -294,6 +375,70 @@ fn detect_instances() -> Vec<DetectedInstance> {
         }
     }
     result
+}
+
+// ── 启动 Claude Code CLI 终端 ─────────────────────────────────────────────
+#[tauri::command]
+fn launch_terminal(workdir: String) -> Result<(), String> {
+    use std::process::Command;
+
+    #[cfg(target_os = "windows")]
+    {
+        // Windows: 用 PowerShell 启动 claude CLI，优先尝试 wt (Windows Terminal)
+        use std::os::windows::process::CommandExt;
+        let work_path = std::path::Path::new(&workdir);
+        if !work_path.exists() {
+            return Err(format!("目录不存在: {}", workdir));
+        }
+
+        // 用 where 命令检测是否有 wt（不依赖外部 crate）
+        let has_wt = Command::new("where")
+            .arg("wt")
+            .creation_flags(0x08000000)  // CREATE_NO_WINDOW — 静默检测
+            .output()
+            .ok()
+            .and_then(|o| if o.status.success() { Some(()) } else { None })
+            .is_some();
+
+        let mut cmd;
+        if has_wt {
+            cmd = Command::new("wt");
+            cmd.arg("-d").arg(&workdir)
+               .arg("powershell").arg("-NoExit").arg("-Command").arg("claude");
+        } else {
+            cmd = Command::new("powershell");
+            cmd.arg("-NoExit").arg("-Command").arg("claude");
+        }
+
+        cmd.current_dir(work_path);
+        const CREATE_NEW_CONSOLE: u32 = 0x00000010;
+        cmd.creation_flags(CREATE_NEW_CONSOLE);
+        cmd.spawn().map_err(|e| format!("启动终端失败: {}", e))?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        #[cfg(target_os = "macos")]
+        {
+            Command::new("open")
+                .args(["-a", "Terminal", "--args", "claude"])
+                .current_dir(&workdir)
+                .spawn()
+                .map_err(|e| format!("启动终端失败: {}", e))?;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            Command::new("x-terminal-emulator")
+                .or_else(|_| Command::new("gnome-terminal"))
+                .or_else(|_| Command::new("konsole"))
+                .map_err(|e| format!("未找到终端模拟器: {}", e))?
+                .args(["--", "-e", "claude"])
+                .current_dir(&workdir)
+                .spawn()
+                .map_err(|e| format!("启动终端失败: {}", e))?;
+        }
+        Ok(())
+    }
 }
 
 /// 从任意嵌套 JSON 中递归查找目标字段（支持 env 包裹、多层嵌套等中转站格式）
@@ -558,6 +703,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             setup_tray(&app.handle())?;
 
@@ -620,6 +767,10 @@ pub fn run() {
             upsert_provider,
             delete_provider,
             switch_provider,
+            inject_to_project,
+            get_active_projects,
+            remove_active_project,
+            launch_terminal,
             parse_paste,
             export_providers,
             import_providers,

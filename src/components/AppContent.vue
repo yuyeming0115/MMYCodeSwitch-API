@@ -5,10 +5,13 @@ import { useMessage, useDialog } from 'naive-ui'
 import { useAppStore, type Provider } from '../stores/app'
 import { i18n } from '../i18n'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { open } from '@tauri-apps/plugin-dialog'
+import { invoke } from '@tauri-apps/api/core'
 import ProviderGrid from './ProviderGrid.vue'
 import ProviderForm from './ProviderForm.vue'
 import Settings from './Settings.vue'
 import QuickSetup from './QuickSetup.vue'
+import ProjectList from './ProjectList.vue'
 
 const { t } = useI18n()
 const store = useAppStore()
@@ -48,6 +51,7 @@ const activeInstance = computed(() => store.activeInstance())
 const activeProviderId = computed(() => activeInstance.value?.active_provider_id)
 const appWindow = getCurrentWindow()
 const isMaxed = ref(false)
+const injecting = ref(false)  // 注入进行中，防止重复点击
 
 async function toggleMax() {
   if (await appWindow.isMaximized()) {
@@ -83,43 +87,103 @@ function goBack() {
   editingProvider.value = undefined
 }
 
+/// 多项目模式核心流程：点击 Provider → 弹文件夹选择器 → 检测重复 → 确认 → 注入 → 启动CLI
 async function doSwitch(p: Provider) {
+  if (injecting.value) return
+  console.log('[doSwitch] 点击供应商:', p.name)
+
   try {
-    const inst = store.activeInstance()
-    const targetDir = inst?.config_dir
-    if (!targetDir) {
-      msg.error('未找到目标实例')
-      return
-    }
-
-    // 单实例模式：直接切换
-    if (store.config.instances.length <= 1) {
-      await store.switchProvider(p.id)
-      msg.success(`✅ 已切换到「${p.name}」`, { duration: 3000 })
-      return
-    }
-
-    // 多实例模式：弹出确认对话框
-    dialog.info({
-      title: '确认切换',
-      content: () => {
-        const h = (window as any).Vue?.h || (() => null)
-        return [
-          `即将把「${p.name}」的配置注入到：`,
-          `\n📁 ${inst?.name || targetDir}`,
-          '\n\n请确认是否继续？',
-        ].join('')
-      },
-      positiveText: '确认切换',
-      negativeText: '取消',
-      onPositiveClick: async () => {
-        await store.switchProvider(p.id)
-        msg.success(`✅ 已将「${p.name}」注入到「${inst?.name || targetDir}」`, { duration: 4000 })
-      },
+    // 1. 弹出文件夹选择对话框
+    const rawPath = await open({
+      directory: true,
+      multiple: false,
+      title: t('select_project_folder'),
     })
+
+    // ★ 关键修复：Tauri v2 dialog open() 可能返回 string | string[]
+    const selectedPath = Array.isArray(rawPath) ? rawPath[0] : rawPath
+
+    console.log('[doSwitch] 文件夹选择结果:', { raw: rawPath, resolved: selectedPath })
+
+    if (!selectedPath || selectedPath.length === 0) {
+      msg.info(t('select_folder_cancelled'), { duration: 2000 })
+      return
+    }
+
+    // 2. 检查该路径是否已有绑定项目（防御 project_path 缺失的脏数据）
+    const existing = store.activeProjects.find(
+      proj => proj.project_path && normalizePath(proj.project_path) === normalizePath(selectedPath)
+    )
+
+    // 3a. 如果已存在且是不同 provider，弹出确认框
+    if (existing && existing.provider_id !== p.id) {
+      return new Promise<void>((resolve) => {
+        dialog.warning({
+          title: t('confirm_switch_provider', { old: existing.provider_name, new: p.name }),
+          content: `${t('project')}: ${existing.name}\n📁 ${existing.project_path}`,
+          positiveText: t('confirm'),
+          negativeText: t('cancel'),
+          onPositiveClick: async () => {
+            await doInject(selectedPath, p)
+            resolve()
+          },
+          onNegativeClick: () => resolve(),
+        })
+      })
+    }
+
+    // 3b. 不存在或同一 provider，直接注入
+    await doInject(selectedPath, p)
   } catch (e) {
-    msg.error(t('switch_failed') + ': ' + e)
+    console.error('[doSwitch] 异常:', e)
+    injecting.value = false
+    const errMsg = (e instanceof Error ? e.message : String(e))
+    msg.error(t('switch_failed') + ': ' + errMsg, { duration: 5000 })
   }
+}
+
+/// 执行实际的注入操作 + 自动启动CLI
+async function doInject(projectPath: string, p: Provider) {
+  injecting.value = true
+  console.log('[doInject] 开始注入:', { provider: p.name, projectPath })
+
+  try {
+    const loadingMsg = msg.loading(t('injecting'), { duration: 0 })
+
+    const result = await store.injectToProject(projectPath, p.id)
+    console.log('[doInject] 注入成功:', result)
+
+    loadingMsg.destroy()
+    const projectName = result.project.name
+    msg.success(t('inject_success', { provider: p.name, project: projectName }), { duration: 4000 })
+
+    // 🚀 自动启动 Claude Code CLI
+    try {
+      msg.info(t('launching_cli'), { duration: 3000 })
+      await invoke('launch_terminal', { workdir: projectPath })
+      console.log('[doInject] CLI 启动成功')
+    } catch (cliErr) {
+      console.error('[doInject] CLI 启动失败:', cliErr)
+      msg.warning(t('launch_failed', { msg: (cliErr as Error).message }), { duration: 4000 })
+    }
+  } catch (e) {
+    console.error('[doInject] 注入失败:', e)
+    const errMsg = (e instanceof Error ? e.message : String(e))
+    msg.error(t('switch_failed') + ': ' + errMsg, { duration: 5000 })
+  } finally {
+    injecting.value = false
+  }
+}
+
+/// 移除项目绑定
+async function handleRemoveProject(id: string) {
+  await store.removeActiveProject(id)
+}
+
+// 工具函数：规范化路径（统一 / 分隔，防御空值）
+function normalizePath(path: string | undefined | null): string {
+  if (!path) return ''
+  return path.replace(/\\/g, '/').trimEnd('/')
 }
 
 function confirmDelete(p: Provider) {
@@ -161,6 +225,12 @@ const statusInfo = computed(() => t('right_click_hint'))
           @edit="openEdit"
           @delete="confirmDelete"
           @add="openAdd"
+        />
+
+        <!-- 已打开项目列表 -->
+        <ProjectList
+          :projects="store.activeProjects"
+          @removed="handleRemoveProject"
         />
       </div>
 

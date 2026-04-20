@@ -14,18 +14,18 @@
           </n-radio-group>
         </n-form-item>
 
-        <n-divider>{{ t('instance_management') }}</n-divider>
-        <div v-for="(inst, idx) in store.config.instances" :key="inst.id" style="margin-bottom:8px">
+        <n-divider>{{ t('global_default_dir') }}</n-divider>
+        <p class="hint-text">{{ t('global_default_dir_hint') }}</p>
+        <div style="margin-bottom:8px">
           <n-space align="center">
-            <n-input v-model:value="inst.name" style="width:120px" />
-            <n-input v-model:value="inst.config_dir" style="width:200px" placeholder="~/.claude" />
-            <n-button text type="error" :disabled="store.config.instances.length <= 1" @click="removeInstance(idx)">✕</n-button>
+            <n-input
+              v-model:value="defaultDir"
+              style="width:280px"
+              :placeholder="t('config_dir_placeholder')"
+            />
+            <n-button dashed @click="browseDefaultDir">{{ t('browse') }}</n-button>
           </n-space>
         </div>
-        <n-space>
-          <n-button dashed @click="addInstance">+ {{ t('add_instance') }}</n-button>
-          <n-button dashed @click="detectInstances">{{ t('detect_instances') }}</n-button>
-        </n-space>
 
         <n-divider>{{ t('export_backup') }} / {{ t('import_backup') }}</n-divider>
         <n-form-item :label="t('backup_password')">
@@ -60,29 +60,18 @@ const store = useAppStore()
 const msg = useMessage()
 const emit = defineEmits<{ back: [] }>()
 const backupPassword = ref('')
+const defaultDir = ref(store.config.default_config_dir || '')
 
 function setLang(lang: string) {
   store.config.language = lang
   i18n.global.locale.value = lang as 'zh' | 'en'
 }
 
-function addInstance() {
-  store.config.instances.push({ id: `instance_${Date.now()}`, name: '新实例', config_dir: '', active_provider_id: undefined })
-}
-
-function removeInstance(idx: number) {
-  store.config.instances.splice(idx, 1)
-}
-
-async function detectInstances() {
-  const found = await invoke<{ name: string; config_dir: string }[]>('detect_instances')
-  if (!found.length) { msg.info(t('detect_none')); return }
-  for (const f of found) {
-    if (!store.config.instances.find(i => i.config_dir === f.config_dir)) {
-      store.config.instances.push({ id: `instance_${Date.now()}`, name: f.name, config_dir: f.config_dir, active_provider_id: undefined })
-    }
+async function browseDefaultDir() {
+  const selected = await dialogOpen({ directory: true, title: t('select_default_dir') })
+  if (selected) {
+    defaultDir.value = selected
   }
-  msg.success(t('detect_found', { n: found.length }))
 }
 
 async function doExport() {
@@ -109,6 +98,7 @@ async function doImport() {
 }
 
 async function save() {
+  store.config.default_config_dir = defaultDir.value || undefined
   await store.saveConfig(store.config)
   msg.success(t('save_success'))
   emit('back')

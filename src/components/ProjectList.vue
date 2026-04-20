@@ -1,0 +1,232 @@
+<template>
+  <div class="project-list-section">
+    <div class="section-header">
+      <div class="section-title">
+        <span class="title-icon">📂</span>
+        {{ t('active_projects') }} ({{ projects.length }})
+      </div>
+      <button v-if="projects.length > 0" class="collapse-btn" @click="collapsed = !collapsed">
+        {{ collapsed ? '▼' : '▲' }}
+      </button>
+    </div>
+
+    <div v-if="!collapsed" class="project-cards">
+      <!-- 空状态 -->
+      <div v-if="projects.length === 0" class="empty-state">
+        <span class="empty-icon">🎯</span>
+        <p>{{ t('no_active_projects') }}</p>
+      </div>
+
+      <!-- 项目卡片列表 -->
+      <div
+        v-for="proj in projects"
+        :key="proj.id"
+        class="proj-card"
+      >
+        <div class="proj-info">
+          <div class="proj-name" :title="proj.project_path || ''">{{ proj.name || '未知项目' }}</div>
+          <div class="proj-meta">
+            <span class="proj-provider">
+              <span class="provider-dot"></span>
+              {{ proj.provider_name || '未知供应商' }}
+            </span>
+            <span class="proj-time">{{ formatTime(proj.updated_at) }}</span>
+          </div>
+          <div class="proj-path" :title="proj.project_path || ''">{{ truncatePath(proj.project_path) }}</div>
+        </div>
+        <button
+          class="remove-btn"
+          :title="t('remove_project')"
+          @click.stop="handleRemove(proj)"
+        >✕</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useDialog, useMessage } from 'naive-ui'
+import type { ActiveProject } from '../stores/app'
+
+const { t } = useI18n()
+const msg = useMessage()
+const dialog = useDialog()
+
+defineProps<{ projects: ActiveProject[] }>()
+const emit = defineEmits<{
+  removed: [id: string]
+}>()
+
+const collapsed = ref(false)
+
+function formatTime(iso: string): string {
+  if (!iso) return ''
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return t('just_now')
+  if (mins < 60) return `${mins}${t('mins_ago')}`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}${t('hours_ago')}`
+  const days = Math.floor(hours / 24)
+  return `${days}${t('days_ago')}`
+}
+
+function truncatePath(path: string | undefined | null): string {
+  if (!path) return ''
+  if (path.length <= 50) return path
+  return '...' + path.slice(-47)
+}
+
+function handleRemove(proj: ActiveProject) {
+  dialog.warning({
+    title: t('confirm_remove_title'),
+    content: `${t('confirm_remove_msg')}「${proj.name || '未知项目'}」?`,
+    positiveText: t('confirm'),
+    negativeText: t('cancel'),
+    onPositiveClick: () => {
+      emit('removed', proj.id)
+      msg.success(`${t('project_removed')}`)
+    },
+  })
+}
+</script>
+
+<style scoped>
+.project-list-section {
+  margin-top: 16px;
+  border-top: 1px solid #e8e8e8;
+  padding-top: 12px;
+}
+body.dark .project-list-section { border-color: #333; }
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #555;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+body.dark .section-title { color: #aaa; }
+.title-icon { font-size: 15px; }
+.collapse-btn {
+  background: none; border: none;
+  font-size: 11px; color: #999; cursor: pointer;
+  padding: 2px 6px; border-radius: 4px;
+}
+.collapse-btn:hover { background: #f0f0f0; }
+body.dark .collapse-btn:hover { background: #333; }
+
+.project-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 24px 0;
+  color: #bbb;
+}
+.empty-state p {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+.empty-icon { font-size: 28px; }
+
+.proj-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1.5px solid #e8e8e8;
+  background: #fff;
+  transition: border-color .2s, box-shadow .2s;
+  gap: 10px;
+}
+.proj-card:hover {
+  border-color: #c0c0c0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+body.dark .proj-card {
+  background: #252525;
+  border-color: #3a3a3a;
+}
+body.dark .proj-card:hover { border-color: #555; }
+
+.proj-info { flex: 1; min-width: 0; }
+.proj-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.dark .proj-name { color: #ddd; }
+
+.proj-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: 11px;
+}
+.proj-provider {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #18a058;
+  font-weight: 500;
+}
+.provider-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #18a058;
+  flex-shrink: 0;
+}
+.proj-time { color: #bbb; }
+
+.proj-path {
+  font-size: 11px;
+  color: #aaa;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remove-btn {
+  flex-shrink: 0;
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all .15s;
+}
+.proj-card:hover .remove-btn { opacity: 1; }
+.remove-btn:hover {
+  background: #fee2e2;
+  color: #d03050;
+}
+body.dark .remove-btn:hover { background: #3a1515; }
+</style>

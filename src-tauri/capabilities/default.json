@@ -6,6 +6,8 @@
   "permissions": [
     "core:default",
     "opener:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
     "fs:default",
     "fs:allow-read-text-file",
     "fs:allow-write-text-file",
@@ -14,6 +16,7 @@
     "fs:allow-remove",
     "fs:allow-copy-file",
     "fs:allow-exists",
-    "fs:scope-home-recursive"
+    "fs:scope-home-recursive",
+    "shell:allow-execute"
   ]
 }
