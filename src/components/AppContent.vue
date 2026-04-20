@@ -14,9 +14,8 @@ const store = useAppStore()
 const msg = useMessage()
 const dialog = useDialog()
 
-const showForm = ref(false)
-const showSettings = ref(false)
-const showQuickSetup = ref(false)
+// 当前页面：'main' | 'quickSetup' | 'settings' | 'form'
+const currentPage = ref<'main' | 'quickSetup' | 'settings' | 'form'>('main')
 const editingProvider = ref<Provider | undefined>()
 const isDark = defineModel<boolean>('isDark', { default: false })
 
@@ -30,12 +29,17 @@ const activeProviderId = computed(() => activeInstance.value?.active_provider_id
 
 function openAdd() {
   editingProvider.value = undefined
-  showForm.value = true
+  currentPage.value = 'form'
 }
 
 function openEdit(p: Provider) {
   editingProvider.value = p
-  showForm.value = true
+  currentPage.value = 'form'
+}
+
+function goBack() {
+  currentPage.value = 'main'
+  editingProvider.value = undefined
 }
 
 async function doSwitch(p: Provider) {
@@ -58,7 +62,6 @@ async function doSwitch(p: Provider) {
     dialog.info({
       title: '确认切换',
       content: () => {
-        // 使用 h 创建 VNode 来动态展示信息
         const h = (window as any).Vue?.h || (() => null)
         return [
           `即将把「${p.name}」的配置注入到：`,
@@ -90,42 +93,67 @@ function confirmDelete(p: Provider) {
     },
   })
 }
+
+// 状态栏信息
+const statusInfo = computed(() => t('right_click_hint'))
 </script>
 
 <template>
   <div class="app">
-    <!-- 主内容区：仅 ProviderGrid -->
-    <div class="content">
-      <ProviderGrid
-        :providers="store.providers"
-        :active-provider-id="activeProviderId"
-        @switch="doSwitch"
-        @edit="openEdit"
-        @delete="confirmDelete"
-        @add="openAdd"
-      />
+    <!-- 主页面 -->
+    <div v-if="currentPage === 'main'" class="page-main">
+      <div class="content">
+        <ProviderGrid
+          :providers="store.providers"
+          :active-provider-id="activeProviderId"
+          @switch="doSwitch"
+          @edit="openEdit"
+          @delete="confirmDelete"
+          @add="openAdd"
+        />
+      </div>
+
+      <footer class="toolbar">
+        <n-button type="primary" size="large" @click="currentPage = 'quickSetup'">⚡ {{ t('quick_setup') }}</n-button>
+        <n-button size="large" secondary @click="isDark = !isDark">{{ isDark ? '☀️' : '🌙' }}</n-button>
+        <n-button size="large" secondary @click="currentPage = 'settings'">⚙️</n-button>
+      </footer>
+
+      <footer class="statusbar">
+        <span>{{ statusInfo }}</span>
+      </footer>
     </div>
 
-    <!-- 底部工具栏：快速配置 + 主题切换 + 设置 -->
-    <footer class="toolbar">
-      <n-button type="primary" size="large" @click="showQuickSetup = true">⚡ {{ t('quick_setup') }}</n-button>
-      <n-button size="large" secondary @click="isDark = !isDark">{{ isDark ? '☀️' : '🌙' }}</n-button>
-      <n-button size="large" secondary @click="showSettings = true">⚙️</n-button>
-    </footer>
+    <!-- 快速配置页面 -->
+    <QuickSetup
+      v-if="currentPage === 'quickSetup'"
+      @back="goBack"
+      @done="goBack(); store.loadProviders()"
+    />
 
-    <!-- 底部状态栏：显示操作提示 -->
-    <footer class="statusbar">
-      <span>{{ t('right_click_hint') }}</span>
-    </footer>
+    <!-- 设置页面 -->
+    <Settings
+      v-if="currentPage === 'settings'"
+      @back="goBack"
+    />
 
-    <ProviderForm v-model:show="showForm" :provider="editingProvider" @done="store.loadProviders" />
-    <Settings v-model:show="showSettings" />
-    <QuickSetup v-model:show="showQuickSetup" @done="store.loadProviders" />
+    <!-- 编辑/添加供应商页面 -->
+    <ProviderForm
+      v-if="currentPage === 'form'"
+      :provider="editingProvider"
+      @back="goBack"
+      @done="goBack(); store.loadProviders()"
+    />
   </div>
 </template>
 
 <style scoped>
 .app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.page-main {
   display: flex;
   flex-direction: column;
   height: 100vh;
