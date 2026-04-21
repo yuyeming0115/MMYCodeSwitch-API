@@ -14,7 +14,8 @@
       "Bash(netstat -ano)",
       "Bash(taskkill /F /PID 35660)",
       "Bash(cmd *)",
-      "Bash(cargo build *)"
+      "Bash(cargo build *)",
+      "WebSearch"
     ]
   }
 }

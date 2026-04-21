@@ -30,7 +30,33 @@
             <n-input v-model:value="form.base_url" placeholder="https://" />
           </n-form-item>
           <n-form-item :label="t('default_model')">
-            <n-input v-model:value="form.models_default" placeholder="claude-opus-4-6" />
+            <n-select
+              v-model:value="form.models_default"
+              :options="modelOptions"
+              placeholder="选择默认模型"
+              filterable
+            />
+          </n-form-item>
+
+          <!-- 模型列表 -->
+          <n-form-item label="模型列表">
+            <div style="width:100%">
+              <n-input
+                v-model:value="customModelInput"
+                type="textarea"
+                :rows="3"
+                placeholder="粘贴模型名称，支持换行、逗号、空格分隔&#10;例：claude-opus-4-6, claude-sonnet-4-6&#10;     claude-haiku-4-5"
+              />
+              <div style="display:flex;justify-content:space-between;margin-top:4px">
+                <span v-if="parsedModelCount > 0" style="font-size:11px;color:#18a058">
+                  已解析 {{ parsedModelCount }} 个模型
+                </span>
+                <span v-else style="font-size:11px;color:#999">
+                  从配置代码粘贴后自动提取，也可手动输入
+                </span>
+                <n-button v-if="customModelInput" size="tiny" text type="error" @click="clearCustomModels">清除</n-button>
+              </div>
+            </div>
           </n-form-item>
         </template>
         <n-form-item :label="t('notes')">
@@ -41,12 +67,13 @@
         </n-form-item>
         <template v-if="showPaste">
           <n-form-item label="">
-            <n-input v-model:value="pasteText" type="textarea" :rows="4" :placeholder="t('paste_hint')" />
+            <n-input v-model:value="pasteText" type="textarea" :rows="6" :placeholder="t('paste_hint')" />
           </n-form-item>
           <n-form-item label="">
             <n-button @click="doParse">{{ t('parse') }}</n-button>
             <span v-if="parseResult" style="margin-left:8px;font-size:12px;color:#888">
               URL: {{ parseResult.baseUrl ?? '-' }} | Key: {{ parseResult.apiKey ? '***' : '-' }}
+              <template v-if="parseResult.models && parseResult.models.length"> | 模型: {{ parseResult.models.length }} 个</template>
               <template v-if="parseResult.source"> | <span style="color:#18a058">{{ parseResult.source }}</span></template>
             </span>
             <n-button v-if="parseResult" text style="margin-left:8px" @click="applyParse">{{ t('apply') }}</n-button>
@@ -63,7 +90,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { useAppStore, type Provider } from '../stores/app'
@@ -80,7 +107,8 @@ const isEdit = ref(false)
 const saving = ref(false)
 const showPaste = ref(false)
 const pasteText = ref('')
-const parseResult = ref<{ baseUrl?: string; apiKey?: string; source?: string } | null>(null)
+const customModelInput = ref('')
+const parseResult = ref<{ baseUrl?: string; apiKey?: string; models?: string[]; source?: string } | null>(null)
 const iconInput = ref<HTMLInputElement | null>(null)
 const iconPreview = ref('')
 const pendingIconData = ref<{ base64: string; ext: string } | null>(null)
@@ -95,19 +123,38 @@ const form = ref({
   notes: '',
 })
 
+const parsedModels = computed(() => {
+  if (!customModelInput.value.trim()) return []
+  return customModelInput.value
+    .split(/[\n,，\s]+/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .filter((v, i, arr) => arr.indexOf(v) === i)
+})
+
+const parsedModelCount = computed(() => parsedModels.value.length)
+
+const modelOptions = computed(() => {
+  const source = parsedModels.value.length > 0
+    ? parsedModels.value
+    : (form.value.models_default ? [form.value.models_default] : [])
+  return source.map(m => ({ label: m, value: m }))
+})
+
 watch(() => props.provider, (p) => {
   isEdit.value = !!p
   iconPreview.value = p?.icon_path ? resolveIconUrl(p.icon_path) : ''
   pendingIconData.value = null
   if (p) {
-    // 兼容处理：provider_type 为空或非标准值时，如果有 base_url 则视为 api 类型
     let pt = p.provider_type
     if (pt !== 'login' && pt !== 'api') {
       pt = (p.base_url) ? 'api' : 'login'
     }
     form.value = { name: p.name, icon_fallback: p.icon_fallback || p.name.slice(0, 2), provider_type: pt, api_key_plain: '', base_url: p.base_url ?? '', models_default: p.models?.default ?? '', notes: p.notes ?? '' }
+    customModelInput.value = ''
   } else {
     form.value = { name: '', icon_fallback: '', provider_type: 'api', api_key_plain: '', base_url: '', models_default: '', notes: '' }
+    customModelInput.value = ''
   }
 }, { immediate: true })
 
@@ -135,13 +182,15 @@ function onIconFile(e: Event) {
 }
 
 async function doParse() {
-  const raw = await invoke<{ baseUrl?: string; apiKey?: string }>('parse_paste', { text: pasteText.value })
-  // 构建来源描述
+  const raw = await invoke<{ baseUrl?: string; apiKey?: string; models?: string[] }>('parse_paste', { text: pasteText.value })
   let source = ''
   if (raw.baseUrl && raw.apiKey) {
     source = '✅ 智能识别成功'
   } else if (raw.baseUrl || raw.apiKey) {
     source = '⚠️ 识别部分字段'
+  }
+  if (raw.models && raw.models.length > 0) {
+    source += ` · 提取 ${raw.models.length} 个模型`
   }
   parseResult.value = raw ? { ...raw, source } : null
 }
@@ -150,7 +199,14 @@ function applyParse() {
   if (!parseResult.value) return
   if (parseResult.value.baseUrl) form.value.base_url = parseResult.value.baseUrl
   if (parseResult.value.apiKey) form.value.api_key_plain = parseResult.value.apiKey
+  if (parseResult.value.models && parseResult.value.models.length > 0) {
+    customModelInput.value = parseResult.value.models.join('\n')
+  }
   showPaste.value = false
+}
+
+function clearCustomModels() {
+  customModelInput.value = ''
 }
 
 async function submit() {
@@ -205,7 +261,7 @@ body.dark .page-header { background: #242424; border-bottom-color: #333; }
 .page-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content:space-between;
   padding: 12px 16px;
   border-top: 1px solid #eee;
   background: #fafafa;

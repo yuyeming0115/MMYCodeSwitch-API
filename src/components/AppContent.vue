@@ -191,6 +191,56 @@ async function handleLaunchProject(projectPath: string) {
   }
 }
 
+/// 一键清理所有未运行 Claude CLI 的项目
+async function handleCleanupProjects() {
+  if (store.activeProjects.length === 0) {
+    msg.info(t('cleanup_none'))
+    return
+  }
+
+  const loadingMsg = msg.loading(t('cleanup_checking'), { duration: 0 })
+
+  try {
+    // 1. 获取所有项目路径
+    const projectPaths = store.activeProjects.map(p => p.project_path)
+
+    // 2. 调用后端检测哪些项目有活跃的 Claude CLI
+    const activeProcesses = await invoke<{ project_path: string; pid: number }[]>('check_active_claude_processes', { projectPaths })
+
+    loadingMsg.destroy()
+
+    // 3. 找出活跃项目路径
+    const activePaths = new Set(activeProcesses.map(p => normalizePath(p.project_path)))
+
+    // 4. 找出待清理项目（不在活跃列表中的）
+    const toRemove = store.activeProjects.filter(proj => !activePaths.has(normalizePath(proj.project_path)))
+
+    if (toRemove.length === 0) {
+      msg.success(t('cleanup_none'))
+      return
+    }
+
+    // 5. 弹出确认框
+    dialog.warning({
+      title: t('cleanup_confirm_title'),
+      content: t('cleanup_confirm_msg', { inactive: toRemove.length, active: activePaths.size }),
+      positiveText: t('confirm'),
+      negativeText: t('cancel'),
+      onPositiveClick: async () => {
+        // 6. 执行清理
+        for (const proj of toRemove) {
+          await store.removeActiveProject(proj.id)
+        }
+        msg.success(t('cleanup_success', { n: toRemove.length }))
+      },
+    })
+  } catch (e) {
+    loadingMsg.destroy()
+    console.error('[handleCleanupProjects] 检测失败:', e)
+    msg.error('检测失败: ' + (e instanceof Error ? e.message : String(e)))
+  }
+}
+
 // 工具函数：规范化路径（统一 / 分隔，防御空值）
 function normalizePath(path: string | undefined | null): string {
   if (!path) return ''
@@ -255,6 +305,13 @@ const statusInfo = computed(() => t('right_click_hint'))
 
       <footer class="statusbar">
         <span>{{ statusInfo }}</span>
+        <n-button
+          v-if="store.activeProjects.length > 0"
+          size="tiny"
+          type="error"
+          secondary
+          @click="handleCleanupProjects"
+        >🧹 {{ t('cleanup_all_projects') }}</n-button>
       </footer>
     </div>
 
@@ -322,12 +379,13 @@ const statusInfo = computed(() => t('right_click_hint'))
 .statusbar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   padding: 6px 16px;
   font-size: 11px;
   color: #888;
   background: #f5f5f5;
   flex-shrink: 0;
+  gap: 12px;
 }
 
 /* 深色模式适配 */

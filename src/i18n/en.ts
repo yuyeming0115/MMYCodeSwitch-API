@@ -82,4 +82,13 @@ export default {
   config_dir_placeholder: '~/.claude',
   browse: 'Browse',
   select_default_dir: 'Select Default Directory',
+  // Cleanup
+  cleanup_all_projects: 'Cleanup All Projects',
+  cleanup_confirm_title: 'Confirm Cleanup',
+  cleanup_confirm_msg: 'Will close {inactive} inactive projects, keeping {active} active ones. Continue?',
+  cleanup_success: 'Cleaned up {n} projects',
+  cleanup_none: 'No projects to cleanup',
+  cleanup_checking: 'Checking active Claude CLI...',
+  cleanup_active_count: 'active',
+  cleanup_inactive_count: 'to cleanup',
 }

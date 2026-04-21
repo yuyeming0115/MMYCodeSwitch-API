@@ -78,17 +78,32 @@
                 <n-select
                   v-model:value="selectedModel"
                   :options="modelOptions"
-                  :placeholder="fetchingModels ? '正在同步模型列表...' : '选择默认模型'"
+                  :placeholder="'选择默认模型'"
                   filterable
                   style="flex:1"
-                  :loading="fetchingModels"
                 />
-                <n-button size="small" type="tertiary" :disabled="!apiKey || fetchingModels" @click="fetchModels" title="从平台实时同步模型列表">
-                  🔄
-                </n-button>
               </div>
-              <div v-if="fetchedModels.length > 0" style="font-size:11px;color:#18a058;margin-top:4px">
-                已从平台同步 {{ fetchedModels.length }} 个模型
+            </n-form-item>
+
+            <!-- 自定义模型列表 -->
+            <n-form-item label="模型列表">
+              <div style="width:100%">
+                <n-input
+                  v-model:value="customModelInput"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="从官网粘贴模型名称，支持换行、逗号、空格分隔&#10;例：qwen3.6-plus, qwen3.5-plus&#10;     glm-5&#10;     kimi-k2.5"
+                  @paste="onModelPaste"
+                />
+                <div style="display:flex;justify-content:space-between;margin-top:4px">
+                  <span v-if="parsedModelCount > 0" style="font-size:11px;color:#18a058">
+                    已解析 {{ parsedModelCount }} 个模型
+                  </span>
+                  <span v-else style="font-size:11px;color:#999">
+                    留空则使用预设列表
+                  </span>
+                  <n-button v-if="customModelInput" size="tiny" text type="error" @click="clearCustomModels">清除</n-button>
+                </div>
               </div>
             </n-form-item>
 
@@ -247,8 +262,7 @@ const selectedModel = ref<string | null>(null)
 const selectedBaseUrlIndex = ref(0)
 const notes = ref('')
 const saving = ref(false)
-const fetchedModels = ref<string[]>([])
-const fetchingModels = ref(false)
+const customModelInput = ref('')
 
 watch(() => step.value, (val) => {
   if (val === 1) {
@@ -258,7 +272,7 @@ watch(() => step.value, (val) => {
     selectedModel.value = null
     selectedBaseUrlIndex.value = 0
     notes.value = ''
-    fetchedModels.value = []
+    customModelInput.value = ''
   }
 })
 
@@ -269,8 +283,21 @@ const effectiveBaseUrl = computed(() => {
   if (!urls || urls.length === 0) return ''
   return urls[selectedBaseUrlIndex.value]?.value ?? urls[0].value
 })
+const customModels = computed(() => {
+  if (!customModelInput.value.trim()) return []
+  return customModelInput.value
+    .split(/[\n,，\s]+/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .filter((v, i, arr) => arr.indexOf(v) === i)
+})
+
+const parsedModelCount = computed(() => customModels.value.length)
+
 const modelOptions = computed(() => {
-  const source = fetchedModels.value.length > 0 ? fetchedModels.value : (currentTpl.value?.models ?? [])
+  const source = customModels.value.length > 0
+    ? customModels.value
+    : (currentTpl.value?.models ?? [])
   return source.map(m => ({ label: m, value: m }))
 })
 const protocolHint = computed(() => {
@@ -286,38 +313,20 @@ function selectTemplate(tpl: Template) {
   selectedModel.value = null
   selectedBaseUrlIndex.value = 0
   notes.value = tpl.notesHint || ''
-  fetchedModels.value = []
+  customModelInput.value = ''
   if (tpl.models.length > 0) {
     selectedModel.value = tpl.models[0]
   }
 }
 
-async function fetchModels() {
-  if (!apiKey.value || !currentTpl.value) return
-  fetchingModels.value = true
-  try {
-    const baseUrl = 'https://coding.dashscope.aliyuncs.com/v1'
-    const resp = await fetch(`${baseUrl}/models`, {
-      headers: { Authorization: `Bearer ${apiKey.value}` },
-      signal: AbortSignal.timeout(10000),
-    })
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-    const data = await resp.json()
-    const ids: string[] = (data.data ?? []).map((m: { id?: string }) => m.id).filter(Boolean).sort()
-    if (ids.length > 0) {
-      fetchedModels.value = ids
-      if (!selectedModel.value || !ids.includes(selectedModel.value)) {
-        selectedModel.value = ids[0]
-      }
-      msg.success(`已同步 ${ids.length} 个模型`)
-    } else {
-      msg.warning('未获取到模型列表')
-    }
-  } catch (e) {
-    msg.warning('模型同步失败')
-  } finally {
-    fetchingModels.value = false
+function onModelPaste() {
+  if (customModels.value.length > 0) {
+    msg.success(`已解析 ${customModels.value.length} 个模型`)
   }
+}
+
+function clearCustomModels() {
+  customModelInput.value = ''
 }
 
 function openHelp(url: string) {

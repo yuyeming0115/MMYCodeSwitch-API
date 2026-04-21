@@ -196,5 +196,5 @@ MMYCodeSwitch-API/
 ---
 
 <p align="center">
-  Made with ❤️ by <a href="https://github.com/mmy">MMY</a>
+  Made with ❤️ by <a href="https://github.com/yuyeming0115">MMY</a>
 </p>

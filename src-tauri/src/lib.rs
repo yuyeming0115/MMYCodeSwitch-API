@@ -267,6 +267,67 @@ fn derive_key_from_password(password: &str) -> String {
 }
 
 // ── 连通性测试（智能适配不同协议） ────────────────────────────────────────
+// ── 获取模型列表（通过后端代理，避免浏览器 CORS 限制） ────────────────
+#[derive(Serialize)]
+pub struct FetchModelsResult {
+    pub models: Vec<String>,
+}
+
+#[tauri::command]
+async fn fetch_models(base_url: String, api_key: String) -> Result<FetchModelsResult, String> {
+    let url_lower = base_url.to_lowercase();
+    let models_url = if url_lower.contains("/apps/anthropic") || url_lower.contains("anthropic.com") {
+        // Anthropic 兼容端点
+        format!("{}/v1/models", base_url.trim_end_matches('/'))
+    } else {
+        // OpenAI 兼容端点
+        let trimmed = base_url.trim_end_matches('/');
+        if trimmed.ends_with("/v1") {
+            format!("{}/models", trimmed)
+        } else {
+            format!("{}/v1/models", trimmed)
+        }
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut req = client.get(&models_url);
+
+    // 判断认证方式
+    if url_lower.contains("dashscope") || url_lower.contains("minimax") || url_lower.contains("moonshot") || url_lower.contains("volces") || url_lower.contains("hunyuan") {
+        req = req.header("Authorization", format!("Bearer {}", api_key));
+    } else if url_lower.contains("anthropic") {
+        req = req.header("x-api-key", &api_key)
+               .header("anthropic-version", "2023-06-01");
+    } else {
+        req = req.header("Authorization", format!("Bearer {}", api_key));
+    }
+
+    let resp = req.send().await.map_err(|e| format!("请求失败: {}", e))?;
+    let status = resp.status();
+    if !status.is_success() {
+        let err_text = resp.text().await.unwrap_or_default();
+        return Err(format!("HTTP {}: {}", status, &err_text[..err_text.len().min(200)]));
+    }
+
+    let data: serde_json::Value = resp.json().await.map_err(|e| format!("解析响应失败: {}", e))?;
+
+    let ids: Vec<String> = if let Some(arr) = data.get("data").and_then(|d| d.as_array()) {
+        arr.iter().filter_map(|m| m.get("id").and_then(|v| v.as_str()).map(String::from)).collect()
+    } else if let Some(arr) = data.get("models").and_then(|d| d.as_array()) {
+        arr.iter().filter_map(|m| m.get("id").and_then(|v| v.as_str()).map(String::from)).collect()
+    } else if let Some(arr) = data.as_array() {
+        arr.iter().filter_map(|m| m.get("id").or_else(|| m.get("name")).and_then(|v| v.as_str()).map(String::from)).collect()
+    } else {
+        return Err("未识别的响应格式".to_string());
+    };
+
+    Ok(FetchModelsResult { models: ids })
+}
+
 #[tauri::command]
 async fn test_provider(provider_id: String) -> Result<bool, String> {
     let providers = config::load_providers().map_err(|e| e.to_string())?;
@@ -346,6 +407,98 @@ fn hide_to_tray(app: tauri::AppHandle) -> Result<(), String> {
         win.hide().map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+// ── 检测哪些项目目录有正在运行的 Claude Code CLI ──────────────────────────────
+#[derive(Serialize)]
+pub struct ActiveClaudeProcess {
+    pub project_path: String,
+    pub pid: u32,
+}
+
+#[tauri::command]
+fn check_active_claude_processes(project_paths: Vec<String>) -> Vec<ActiveClaudeProcess> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        let mut result: Vec<ActiveClaudeProcess> = vec![];
+
+        // 使用 PowerShell 获取所有包含 "claude" 的进程及其命令行
+        let ps_script = "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*claude*' } | Select-Object ProcessId, CommandLine";
+        let output = Command::new("powershell")
+            .args(["-NoProfile", "-Command", ps_script])
+            .output()
+            .ok();
+
+        if let Some(out) = output {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            // 解析输出，找出包含项目路径的进程
+            for proj_path in &project_paths {
+                let norm_proj = proj_path.replace("\\", "/");
+                let proj_lower = proj_path.to_lowercase();
+                let norm_lower = norm_proj.to_lowercase();
+
+                for line in stdout.lines() {
+                    let line_lower = line.to_lowercase();
+                    if line_lower.contains("claude") &&
+                       (line_lower.contains(&proj_lower) || line_lower.contains(&norm_lower)) {
+                        // 尝试提取 PID（第一列数字）
+                        let parts: Vec<&str> = line.split_whitespace().collect();
+                        if let Some(first) = parts.first() {
+                            if let Ok(pid) = first.parse::<u32>() {
+                                if !result.iter().any(|r| r.project_path == *proj_path) {
+                                    result.push(ActiveClaudeProcess {
+                                        project_path: proj_path.clone(),
+                                        pid,
+                                    });
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        use std::process::Command;
+        let mut result: Vec<ActiveClaudeProcess> = vec![];
+
+        // macOS/Linux: 使用 ps 命令检测
+        let output = Command::new("ps")
+            .args(["aux"])
+            .output()
+            .ok();
+
+        if let Some(out) = output {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+
+            for line in stdout.lines() {
+                if line.contains("claude") {
+                    for proj_path in &project_paths {
+                        let norm_proj = proj_path.replace("\\", "/");
+                        if line.contains(proj_path) || line.contains(&norm_proj) {
+                            let parts: Vec<&str> = line.split_whitespace().collect();
+                            let pid: u32 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                            if pid > 0 && !result.iter().any(|r| r.project_path == *proj_path) {
+                                result.push(ActiveClaudeProcess {
+                                    project_path: proj_path.clone(),
+                                    pid,
+                                });
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        result
+    }
 }
 
 // ── 自动检测 Claude Code 实例 ─────────────────────────────────────────────────
@@ -476,7 +629,18 @@ fn deep_find(json: &serde_json::Value, targets: &[&str]) -> Option<(String, Stri
     None
 }
 
-/// 已知的目标字段名列表——覆盖 Anthropic / OpenAI / 中转站常见命名
+/// 已知的模型名称字段——覆盖 Anthropic / OpenAI 常见命名
+const KNOWN_MODEL_FIELDS: &[&str] = &[
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_DEFAULT_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_REASONING_MODEL",
+    "OPENAI_MODEL",
+    "DEFAULT_MODEL",
+    "MODEL",
+];
 const KNOWN_URL_FIELDS: &[&str] = &[
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_API_BASE",
@@ -508,29 +672,49 @@ const KNOWN_KEY_FIELDS: &[&str] = &[
     "access_token",
 ];
 
+/// 从 JSON 中递归收集所有模型名称字段
+fn collect_models_from_json(json: &serde_json::Value) -> Vec<String> {
+    let mut models = Vec::new();
+    match json {
+        serde_json::Value::Object(map) => {
+            for (k, v) in map {
+                if KNOWN_MODEL_FIELDS.contains(&k.as_str()) {
+                    if let Some(s) = v.as_str() {
+                        if !s.is_empty() { models.push(s.to_string()); }
+                    }
+                }
+                models.extend(collect_models_from_json(v));
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                models.extend(collect_models_from_json(item));
+            }
+        }
+        _ => {}
+    }
+    models
+}
+
 #[tauri::command]
 fn parse_paste(text: String) -> serde_json::Value {
-    let mut result = serde_json::json!({ "baseUrl": null, "apiKey": null });
+    let mut result = serde_json::json!({ "baseUrl": null, "apiKey": null, "models": [] });
+    let mut models: Vec<String> = Vec::new();
 
     // ── 策略1: 整体作为 JSON 递归深挖（支持嵌套/中转站格式）──
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
-        // 合并 URL 和 KEY 目标字段
         let all_targets: Vec<&str> = KNOWN_URL_FIELDS.iter().chain(KNOWN_KEY_FIELDS.iter()).copied().collect();
         if let Some((url, key)) = deep_find(&json, &all_targets) {
             if !url.is_empty() { result["baseUrl"] = serde_json::Value::String(url); }
             if !key.is_empty() { result["apiKey"] = serde_json::Value::String(key); }
-            // 如果已经找到全部，直接返回；否则继续用行级解析补充
-            if !result["baseUrl"].is_null() && !result["apiKey"].is_null() {
-                return result;
-            }
         }
+        models = collect_models_from_json(&json);
     }
 
     // ── 策略2: 逐行解析（兼容 export 语句、裸值、扁平 JSON）──
     for line in text.lines() {
         let line = line.trim();
         if result["baseUrl"].is_null() || result["apiKey"].is_null() {
-            // 2a. 单行 JSON 对象
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
                 let all_targets: Vec<&str> = KNOWN_URL_FIELDS.iter().chain(KNOWN_KEY_FIELDS.iter()).copied().collect();
                 if let Some((url, key)) = deep_find(&json, &all_targets) {
@@ -540,7 +724,6 @@ fn parse_paste(text: String) -> serde_json::Value {
                 }
             }
 
-            // 2b. bash export 语句
             if line.starts_with("export ") && result["baseUrl"].is_null() {
                 for &field in KNOWN_URL_FIELDS {
                     let prefix = format!("export {}=", field);
@@ -560,12 +743,10 @@ fn parse_paste(text: String) -> serde_json::Value {
                 }
             }
 
-            // 2c. 裸 URL
             if (line.starts_with("https://") || line.starts_with("http://")) && result["baseUrl"].is_null() {
                 result["baseUrl"] = serde_json::Value::String(line.to_string());
             }
 
-            // 2d. 裸 Key（sk- 开头或长字符串）
             if (line.starts_with("sk-") || line.len() > 20)
                 && result["apiKey"].is_null()
                 && !line.contains(' ')
@@ -576,6 +757,10 @@ fn parse_paste(text: String) -> serde_json::Value {
             }
         }
     }
+
+    models.sort();
+    models.dedup();
+    result["models"] = serde_json::Value::Array(models.into_iter().map(serde_json::Value::String).collect());
     result
 }
 
@@ -715,7 +900,7 @@ pub fn run() {
                     if let Ok(s) = std::fs::read_to_string(&state_path) {
                         if let Ok(state) = serde_json::from_str::<serde_json::Value>(&s) {
                             let _ = win.set_size(tauri::LogicalSize::new(
-                                state["width"].as_u64().unwrap_or(900) as u32,
+                                state["width"].as_u64().unwrap_or(510) as u32,
                                 state["height"].as_u64().unwrap_or(620) as u32,
                             ));
                             // 只在有合理坐标时才恢复位置（避免屏幕外）
@@ -774,12 +959,14 @@ pub fn run() {
             parse_paste,
             export_providers,
             import_providers,
+            fetch_models,
             test_provider,
             detect_instances,
             save_provider_icon,
             save_window_state,
             get_window_state,
             hide_to_tray,
+            check_active_claude_processes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

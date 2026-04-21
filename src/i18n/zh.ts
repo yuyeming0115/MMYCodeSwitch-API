@@ -82,4 +82,13 @@ export default {
   config_dir_placeholder: '~/.claude',
   browse: '浏览',
   select_default_dir: '选择默认目录',
+  // 一键清理
+  cleanup_all_projects: '一键清理关闭项目',
+  cleanup_confirm_title: '确认清理项目',
+  cleanup_confirm_msg: '将关闭所有未运行 Claude Code CLI 的项目（{inactive} 个），保留活跃项目（{active} 个）。是否继续？',
+  cleanup_success: '已清理 {n} 个项目',
+  cleanup_none: '没有需要清理的项目',
+  cleanup_checking: '正在检测活跃的 Claude CLI...',
+  cleanup_active_count: '活跃',
+  cleanup_inactive_count: '待清理',
 }
