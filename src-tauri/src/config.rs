@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use anyhow::Result;
 use crate::crypto;
+use md5;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Provider {
@@ -49,6 +50,20 @@ pub struct ActiveProject {
     pub created_at: String,
     #[serde(alias = "updatedAt")]
     pub updated_at: String,
+    /// 项目专属配置目录路径（新增）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "configDir")]
+    pub config_dir: Option<String>,
+}
+
+/// 会话归档记录（切换供应商时记录）
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SessionArchive {
+    pub id: String,
+    pub provider_id: String,
+    pub provider_name: String,
+    pub switched_at: String,
+    pub config_snapshot: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -87,7 +102,7 @@ pub fn mmycs_dir() -> PathBuf {
 
 pub fn ensure_dirs() -> Result<()> {
     let base = mmycs_dir();
-    for sub in &["providers", "instances", "backups", "logs"] {
+    for sub in &["providers", "instances", "backups", "logs", "projects"] {
         std::fs::create_dir_all(base.join(sub))?;
     }
     Ok(())
@@ -168,4 +183,86 @@ pub fn find_active_project_by_path(cfg: &AppConfig, path: &str) -> Option<usize>
     cfg.active_projects
         .iter()
         .position(|p| normalize_project_path(&p.project_path) == norm)
+}
+
+// ── 项目专属配置目录相关函数 ───────────────────────────────────────────────
+
+/// 生成项目路径的 MD5 哈希（作为目录标识）
+pub fn get_project_hash(project_path: &str) -> String {
+    let norm = normalize_project_path(project_path);
+    let digest = md5::compute(norm.as_bytes());
+    format!("{:x}", digest)
+}
+
+/// 获取项目专属配置目录路径
+pub fn get_project_config_dir(project_path: &str) -> PathBuf {
+    let hash = get_project_hash(project_path);
+    mmycs_dir().join("projects").join(hash)
+}
+
+/// 确保项目专属配置目录存在（包括 sessions 子目录）
+pub fn ensure_project_config_dir(project_path: &str) -> Result<PathBuf> {
+    let dir = get_project_config_dir(project_path);
+    std::fs::create_dir_all(dir.join("sessions"))?;
+    Ok(dir)
+}
+
+/// 归档当前会话（切换供应商时记录历史）
+pub fn archive_session(project_path: &str, provider: &Provider, config_snapshot: HashMap<String, String>) -> Result<()> {
+    let sessions_dir = get_project_config_dir(project_path).join("sessions");
+    std::fs::create_dir_all(&sessions_dir)?;
+
+    let now = chrono::Utc::now();
+    let archive = SessionArchive {
+        id: format!("session_{}", now.timestamp_millis()),
+        provider_id: provider.id.clone(),
+        provider_name: provider.name.clone(),
+        switched_at: now.to_rfc3339(),
+        config_snapshot,
+    };
+
+    // 文件名格式：{timestamp}_{provider_name}.json
+    let ts = now.format("%Y%m%d_%H%M%S");
+    let filename = format!("{}_{}.json", ts, provider.name);
+    let path = sessions_dir.join(filename);
+
+    std::fs::write(path, serde_json::to_string_pretty(&archive)?)?;
+    Ok(())
+}
+
+/// 获取项目的会话归档列表
+pub fn get_project_sessions(project_path: &str) -> Result<Vec<SessionArchive>> {
+    let sessions_dir = get_project_config_dir(project_path).join("sessions");
+    if !sessions_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut sessions = vec![];
+    for entry in std::fs::read_dir(&sessions_dir)? {
+        let entry = entry?;
+        if entry.path().extension().and_then(|e| e.to_str()) == Some("json") {
+            let s = std::fs::read_to_string(entry.path())?;
+            if let Ok(session) = serde_json::from_str::<SessionArchive>(&s) {
+                sessions.push(session);
+            }
+        }
+    }
+    // 按时间倒序排列（最新的在前）
+    sessions.sort_by(|a, b| b.switched_at.cmp(&a.switched_at));
+    Ok(sessions)
+}
+
+/// 更新项目的绑定记录（写入 binding.json）
+pub fn update_project_binding(project_path: &str, provider_id: &str, provider_name: &str) -> Result<()> {
+    let dir = get_project_config_dir(project_path);
+    std::fs::create_dir_all(&dir)?;
+
+    let binding = serde_json::json!({
+        "provider_id": provider_id,
+        "provider_name": provider_name,
+        "updated_at": chrono::Utc::now().to_rfc3339(),
+    });
+
+    std::fs::write(dir.join("binding.json"), serde_json::to_string_pretty(&binding)?)?;
+    Ok(())
 }

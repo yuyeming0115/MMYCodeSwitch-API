@@ -8,7 +8,7 @@ mod config;
 mod crypto;
 mod inject;
 
-use config::{AppConfig, ActiveProject, Provider};
+use config::{AppConfig, ActiveProject, Provider, SessionArchive};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -120,13 +120,14 @@ fn switch_provider(config_dir: String, provider_id: String) -> Result<(), String
 pub struct InjectToProjectResult {
     pub project: ActiveProject,
     pub was_existing: bool,
+    /// 项目专属配置目录路径（新增）
+    pub config_dir: String,
 }
 
 #[tauri::command]
 fn inject_to_project(project_path: String, provider_id: String) -> Result<InjectToProjectResult, String> {
-    // 1. 规范化路径并构建 {project}/.claude 目录
+    // 1. 规范化路径
     let norm_path = config::normalize_project_path(&project_path);
-    let claude_dir = format!("{}/.claude", norm_path);
 
     // 2. 加载 Provider 并解密 Key
     let providers = config::load_providers().map_err(|e| e.to_string())?;
@@ -139,8 +140,8 @@ fn inject_to_project(project_path: String, provider_id: String) -> Result<Inject
         } else { None }
     } else { None };
 
-    // 3. 调用已有的 inject 函数写入 {project}/.claude/settings.json
-    inject::inject(&claude_dir, provider, api_key_plain.as_deref())
+    // 3. 注入到项目专属配置目录（方案C）
+    let config_dir = inject::inject_to_project_dir(&norm_path, provider, api_key_plain.as_deref())
         .map_err(|e| e.to_string())?;
 
     // 4. 更新 active_projects 记录
@@ -160,6 +161,7 @@ fn inject_to_project(project_path: String, provider_id: String) -> Result<Inject
         cfg.active_projects[idx].provider_id = provider_id.clone();
         cfg.active_projects[idx].provider_name = provider.name.clone();
         cfg.active_projects[idx].updated_at = now.clone();
+        cfg.active_projects[idx].config_dir = Some(config_dir.clone());
         cfg.active_projects[idx].clone()
     } else {
         // 新增记录
@@ -171,6 +173,7 @@ fn inject_to_project(project_path: String, provider_id: String) -> Result<Inject
             provider_name: provider.name.clone(),
             created_at: now.clone(),
             updated_at: now,
+            config_dir: Some(config_dir.clone()),
         };
         cfg.active_projects.push(new_proj.clone());
         new_proj
@@ -178,7 +181,7 @@ fn inject_to_project(project_path: String, provider_id: String) -> Result<Inject
 
     config::save_app_config(&cfg).map_err(|e| e.to_string())?;
 
-    Ok(InjectToProjectResult { project, was_existing })
+    Ok(InjectToProjectResult { project, was_existing, config_dir })
 }
 
 // ── 获取已激活项目列表 ────────────────────────────────────────────────
@@ -194,6 +197,21 @@ fn remove_active_project(id: String) -> Result<(), String> {
     let mut cfg = config::load_app_config().map_err(|e| e.to_string())?;
     cfg.active_projects.retain(|p| p.id != id);
     config::save_app_config(&cfg).map_err(|e| e.to_string())
+}
+
+// ── 获取项目专属配置目录路径 ────────────────────────────────────────────────
+#[tauri::command]
+fn get_project_config_dir(project_path: String) -> Result<String, String> {
+    let norm_path = config::normalize_project_path(&project_path);
+    let dir = config::get_project_config_dir(&norm_path);
+    Ok(dir.to_string_lossy().to_string())
+}
+
+// ── 获取项目的会话归档列表 ────────────────────────────────────────────────
+#[tauri::command]
+fn get_project_sessions(project_path: String) -> Result<Vec<SessionArchive>, String> {
+    let norm_path = config::normalize_project_path(&project_path);
+    config::get_project_sessions(&norm_path).map_err(|e| e.to_string())
 }
 
 // ── 图标上传 ──────────────────────────────────────────────────────────────────
@@ -955,6 +973,8 @@ pub fn run() {
             inject_to_project,
             get_active_projects,
             remove_active_project,
+            get_project_config_dir,
+            get_project_sessions,
             launch_terminal,
             parse_paste,
             export_providers,
