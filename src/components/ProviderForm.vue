@@ -177,7 +177,7 @@ async function submit() {
     msg.success(t('save_success'))
     emit('done')
   } catch (e) {
-    msg.error('保存失败: ' + (e as Error)?.message ?? String(e))
+    msg.error('保存失败: ' + (e instanceof Error ? e.message : String(e)))
   } finally {
     saving.value = false
   }

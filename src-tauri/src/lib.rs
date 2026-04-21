@@ -311,7 +311,7 @@ async fn test_provider(provider_id: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn save_window_state(x: i32, y: i32, width: u32, height: u32, isDark: Option<bool>) -> Result<(), String> {
+fn save_window_state(x: i32, y: i32, width: u32, height: u32, is_dark: Option<bool>) -> Result<(), String> {
     let path = config::mmycs_dir().join("window_state.json");
     let mut state = if path.exists() {
         std::fs::read_to_string(&path)
@@ -321,7 +321,7 @@ fn save_window_state(x: i32, y: i32, width: u32, height: u32, isDark: Option<boo
     } else {
         serde_json::json!({})
     };
-    if let Some(d) = isDark { state["isDark"] = serde_json::json!(d); }
+    if let Some(d) = is_dark { state["isDark"] = serde_json::json!(d); }
     state["x"] = serde_json::json!(x);
     state["y"] = serde_json::json!(y);
     state["width"] = serde_json::json!(width);

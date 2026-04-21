@@ -50,7 +50,6 @@ watch(isDark, async (val) => {
 const activeInstance = computed(() => store.activeInstance())
 const activeProviderId = computed(() => activeInstance.value?.active_provider_id)
 const appWindow = getCurrentWindow()
-const isMaxed = ref(false)
 const injecting = ref(false)  // 注入进行中，防止重复点击
 
 async function toggleMax() {
@@ -195,7 +194,7 @@ async function handleLaunchProject(projectPath: string) {
 // 工具函数：规范化路径（统一 / 分隔，防御空值）
 function normalizePath(path: string | undefined | null): string {
   if (!path) return ''
-  return path.replace(/\\/g, '/').trimEnd('/')
+  return path.replace(/\\/g, '/').replace(/\/+$/, '')
 }
 
 function confirmDelete(p: Provider) {

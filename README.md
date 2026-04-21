@@ -74,20 +74,31 @@ npm run tauri dev
 
 **🖱️ Windows 双击运行（最简单）：**
 ```
-双击 build.bat 即可开始打包
+双击 build.bat → 选择模式
 ```
 
 **💻 PowerShell 命令行：**
 ```powershell
-# Release 模式（默认）— 生成优化后的安装包
+# 便携版（推荐）— 直接运行，无需安装
+.\build.ps1 -Portable
+
+# 安装版 — 标准 NSIS 安装程序
 .\build.ps1
 
-# 开发模式 — 更快但文件更大
-.\build.ps1 -Mode dev
+# 单文件 EXE — 一个 exe 搞定（需要安装 7-Zip）
+.\build.ps1 -SingleFile
 
-# 清理旧产物后重新构建
-.\build.ps1 -Clean
+# 清理后重新构建
+.\build.ps1 -Portable -Clean
 ```
+
+### 打包类型对比
+
+| 类型 | 命令 | 说明 | 文件大小 |
+|------|------|------|---------|
+| **便携版** ✨ | `-Portable` | 双击即用，免安装，推荐分发 | ~8-10 MB |
+| **安装版** | 默认 | 标准 NSIS 安装程序 | ~8-12 MB |
+| **单文件** | `-SingleFile` | 自解压单 exe（需 7-Zip） | ~6-8 MB |
 
 **输出位置：**
 ```
