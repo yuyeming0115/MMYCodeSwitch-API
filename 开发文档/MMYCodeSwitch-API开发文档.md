@@ -302,6 +302,184 @@ MMYCodeSwitch-API/
 - [ ] 用户上传自定义供应商图片
 
 ### Phase 3 — 增强功能
-- [ ] 供应商连通性测试（发送最小请求验证 Key）
-- [ ] 系统托盘快速切换
-- [ ] 自动检测已安装的 Claude Code 实例路径
+- [x] 供应商连通性测试（发送最小请求验证 Key）
+- [x] 系统托盘快速切换
+- [x] 自动检测已安装的 Claude Code 实例路径
+
+---
+
+## 十四、CLAUDE.md 模板管理（v3.5 新增）
+
+### 14.1 功能概述
+
+不同项目有不同的开发规范，CLAUDE.md 模板管理功能允许用户：
+- 创建/编辑/删除 CLAUDE.md 模板
+- 将模板绑定到特定项目
+- 一键将模板内容写入项目的 `.claude/CLAUDE.md`
+
+### 14.2 存储结构
+
+```
+~/.mmycs/
+├── templates/                    # CLAUDE.md 模板目录
+│   ├── vue-standard.md           # Vue 项目标准模板
+│   ├── python-clean.md           # Python 无注释风格
+│   ├── react-ts.md               # React TypeScript 规范
+│   └── custom-xxx.md             # 用户自定义
+├── template_bindings.json        # 项目-模板绑定关系
+└── ...
+```
+
+### 14.3 模板数据结构
+
+```json
+// ~/.mmycs/templates/vue-standard.md
+# Vue 3 项目开发规范
+- 使用 Composition API
+- 组件命名：PascalCase
+- ...
+
+// ~/.mmycs/template_bindings.json
+{
+  "bindings": [
+    {
+      "project_path": "D:/Projects/my-vue-app",
+      "template_name": "vue-standard",
+      "updated_at": "2026-04-22T10:00:00Z"
+    }
+  ]
+}
+```
+
+### 14.4 UI 设计
+
+在设置页面新增「开发规则模板」区域：
+- 模板列表（可编辑/删除）
+- 新建模板按钮
+- 项目绑定管理
+
+---
+
+## 十五、Skill 模板库（v3.5 新增）
+
+### 15.1 功能概述
+
+Skill 是 Claude Code 的扩展机制，存储在 `~/.claude/skills/` 目录。Skill 模板库功能：
+- 管理常用 skill 模板
+- 查看/编辑/删除 skill
+- 备份 skill 配置
+
+### 15.2 存储结构
+
+```
+~/.mmycs/
+├── skills/                       # Skill 模板目录
+│   ├── simplify.md               # 代码简化 skill
+│   ├── review.md                 # PR 审查 skill
+│   └── custom-xxx.md             # 用户自定义
+└── ...
+```
+
+### 15.3 Skill 格式
+
+```markdown
+# simplify
+
+Review changed code for reuse, quality, and efficiency, then fix any issues found.
+
+## When to use
+- After making code changes
+- Before committing changes
+
+## Instructions
+1. Check for duplicate code
+2. Verify naming conventions
+3. Ensure no unused imports
+```
+
+---
+
+## 十六、完整备份方案（v3.5 新增）
+
+### 16.1 功能概述
+
+完善导出功能，支持跨电脑完整迁移，包含：
+- API 供应商配置 ✓ 已有
+- CLAUDE.md 模板
+- Skill 模板
+- 应用偏好设置
+
+### 16.2 完整备份文件结构
+
+```
+完整备份文件 (.mmycs 二进制格式)
+├── [Magic: "MMYCS"]              # 文件标识
+├── [Version: 0x03]               # 版本号（v3 支持完整备份）
+├── [Machine key hash]            # 机器识别
+├── [Password flag]               # 是否密码保护
+├── providers/                    # API 供应商配置（加密）
+├── templates/                    # CLAUDE.md 模板
+├── skills/                       # Skill 模板
+├── app_config/                   # 应用偏好设置
+│   ├── language
+│   ├── backupExportPath
+│   └── defaultConfigDir
+└── template_bindings/            # 项目-模板绑定关系
+```
+
+### 16.3 导入逻辑
+
+1. 解析备份文件头，识别版本
+2. 检查机器匹配：
+   - 同机 + 无密码 → 自动导入
+   - 跨机器 + 有密码 → 输入密码导入
+   - 跨机器 + 无密码 → 无法导入
+3. 恢复所有配置到对应目录
+
+---
+
+## 十七、目录结构更新
+
+```
+~/.mmycs/                         # 独立管理空间（跨平台）
+├── config.json                   # App 全局配置
+├── .key                          # 加密密钥
+├── providers/                    # 供应商配置目录
+│   └── provider_xxx.json
+├── templates/                    # CLAUDE.md 模板目录（新增）
+│   └── xxx.md
+├── skills/                       # Skill 模板目录（新增）
+│   └── xxx.md
+├── template_bindings.json        # 项目-模板绑定（新增）
+├── backups/                      # 切换前自动备份
+│   └── settings_xxx.json
+│   └── mmycs_backup_xxx.mmycs    # 完整备份文件
+├── projects/                     # 项目专属配置目录
+│   └── {project_hash}/
+│       ├── settings.json
+│       ├── binding.json
+│       └── sessions/
+├── icons/                        # 自定义图标
+├── logs/                         # 操作日志
+└── window_state.json             # 窗口状态
+```
+
+---
+
+## 十八、开发阶段规划更新
+
+### Phase 4 — 完整备份（v3.5）
+- [ ] 完善导出功能：包含模板 + skill + 应用配置
+- [ ] 版本升级至 0x03
+- [ ] 导入时自动恢复所有数据
+
+### Phase 5 — CLAUDE.md 模板管理（v3.5）
+- [ ] 模板 CRUD 接口
+- [ ] 模板列表 UI
+- [ ] 项目绑定功能
+- [ ] 一键注入 CLAUDE.md 到项目
+
+### Phase 6 — Skill 模板库（v3.5）
+- [ ] Skill CRUD 接口
+- [ ] Skill 列表 UI
+- [ ] Skill 备份/恢复

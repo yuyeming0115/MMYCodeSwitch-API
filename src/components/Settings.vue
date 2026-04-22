@@ -27,8 +27,22 @@
           </n-space>
         </div>
 
+        <!-- 模板和 Skill 入口 -->
+        <n-divider>{{ t('templates') }} & {{ t('skills') }}</n-divider>
+        <n-space>
+          <n-button @click="emit('openTemplates')">{{ t('templates') }} ({{ store.templates.length }})</n-button>
+          <n-button @click="emit('openSkills')">{{ t('skills') }} ({{ store.skills.length }})</n-button>
+        </n-space>
+
         <n-divider>{{ t('export_backup') }} / {{ t('import_backup') }}</n-divider>
-        <p class="hint-text">{{ t('backup_password_desc') }}</p>
+
+        <!-- 完整备份选项 -->
+        <n-form-item :label="t('full_backup_include_templates')">
+          <n-checkbox v-model:checked="includeTemplates" />
+        </n-form-item>
+        <n-form-item :label="t('full_backup_include_skills')">
+          <n-checkbox v-model:checked="includeSkills" />
+        </n-form-item>
 
         <!-- 导出路径 -->
         <n-form-item :label="t('backup_export_path')">
@@ -77,7 +91,7 @@
           </n-space>
         </n-form-item>
 
-        <!-- 导入密码输入（仅在需要时显示） -->
+        <!-- 导入密码输入 -->
         <n-modal v-model:show="showPasswordModal" preset="dialog" :title="t('backup_import_need_pwd')">
           <n-form-item :label="t('backup_password_label')">
             <n-input v-model:value="importPassword" type="password" show-password-on="click" style="width:200px" />
@@ -111,14 +125,15 @@ import { FolderOutline as folderOutlineIcon } from '@vicons/ionicons5'
 const { t } = useI18n()
 const store = useAppStore()
 const msg = useMessage()
-const emit = defineEmits<{ back: [] }>()
+const emit = defineEmits<{ back: [], openTemplates: [], openSkills: [] }>()
 
 const usePassword = ref(false)
 const backupPassword = ref('')
 const defaultDir = ref(store.config.defaultConfigDir || '')
 const exportPath = ref(store.config.backupExportPath || '')
+const includeTemplates = ref(true)
+const includeSkills = ref(true)
 
-// 导入状态
 const importStatus = ref<{ type: 'info' | 'warning' | 'success', text: string } | null>(null)
 const showPasswordModal = ref(false)
 const importPassword = ref('')
@@ -148,76 +163,64 @@ function clearExportPath() {
   exportPath.value = ''
 }
 
-// 导出 - 导出到指定路径或默认 backups 目录
+// 完整导出
 async function doExport() {
   try {
     const password = usePassword.value && backupPassword.value ? backupPassword.value : ''
-    const customPath = exportPath.value || null
-    const result = await invoke<{ path: string, filename: string }>('export_backup_quick', { password, customPath })
+    const result = await invoke<{ path: string, filename: string, included: string[] }>('export_full_backup', {
+      password,
+      includeTemplates,
+      includeSkills
+    })
     msg.success(t('backup_export_quick_success', { path: result.path }))
   } catch (e) {
     msg.error('导出失败: ' + String(e))
   }
 }
 
+// 完整导入
 async function doImport() {
   importStatus.value = null
 
   const path = await dialogOpen({
-    filters: [
-      { name: 'MMYCS Backup', extensions: ['mmycs'] },
-      { name: 'Legacy JSON', extensions: ['json'] }
-    ]
+    filters: [{ name: 'MMYCS Backup', extensions: ['mmycs'] }]
   })
   if (!path) return
 
   const fileData = await readFile(path as string)
-
-  // 检测文件类型
   const data: number[] = Array.from(fileData)
 
-  // 检查是否为新格式（MMYCS magic）
   if (data.slice(0, 5).map(b => String.fromCharCode(b)).join('') === 'MMYCS') {
-    // 新格式：预检查
-    const info = await invoke<{ version: number, same_machine: boolean, has_password: boolean }>('check_backup_file', { data })
+    const info = await invoke<{ version: number, same_machine: boolean, has_password: boolean }>('check_full_backup_file', { data })
 
     if (info.same_machine && !info.has_password) {
-      // 同机无密码：自动导入
       importStatus.value = { type: 'info', text: t('backup_same_machine') }
       try {
-        const result = await invoke<{ count: number, same_machine: boolean, need_password: boolean }>('import_backup', { data, password: '' })
+        const result = await invoke<{ providers_count: number, templates_count: number, skills_count: number }>('import_full_backup', {
+          data,
+          password: '',
+          importTemplates: true,
+          importSkills: true
+        })
         await store.loadProviders()
-        importStatus.value = { type: 'success', text: t('backup_import_success', { n: result.count }) }
-        msg.success(t('backup_import_success', { n: result.count }))
+        await store.loadTemplates()
+        await store.loadSkills()
+        await store.loadTemplateBindings()
+        importStatus.value = { type: 'success', text: t('full_backup_import_success', { providers: result.providers_count, templates: result.templates_count, skills: result.skills_count }) }
+        msg.success(t('full_backup_import_success', { providers: result.providers_count, templates: result.templates_count, skills: result.skills_count }))
       } catch (e) {
         msg.error(String(e))
       }
     } else if (info.has_password) {
-      // 有密码：需要输入
       importStatus.value = { type: 'warning', text: t('backup_import_need_pwd') }
       pendingBackupData.value = data
       showPasswordModal.value = true
     } else {
-      // 跨机器无密码：无法导入
       importStatus.value = { type: 'warning', text: t('backup_import_no_pwd_cross') }
       msg.warning(t('backup_import_no_pwd_cross'))
     }
   } else {
-    // 旧格式 JSON：需要密码
-    try {
-      const json = new TextDecoder().decode(fileData)
-      const bundle = JSON.parse(json)
-      if (bundle.version === 1 && bundle.providers) {
-        // 旧格式：提示输入密码
-        importStatus.value = { type: 'warning', text: '旧格式备份，需要密码' }
-        pendingBackupData.value = data
-        showPasswordModal.value = true
-      } else {
-        msg.error('无法识别的备份文件格式')
-      }
-    } catch {
-      msg.error('无法识别的备份文件格式')
-    }
+    msg.error('无法识别的备份文件格式')
   }
 }
 
@@ -233,28 +236,21 @@ async function doImportWithPassword() {
 
   const data = pendingBackupData.value
 
-  // 检查格式
-  if (data.slice(0, 5).map(b => String.fromCharCode(b)).join('') === 'MMYCS') {
-    // 新格式
-    try {
-      const result = await invoke<{ count: number, same_machine: boolean, need_password: boolean }>('import_backup', { data, password: importPassword.value })
-      await store.loadProviders()
-      importStatus.value = { type: 'success', text: t('backup_import_success', { n: result.count }) }
-      msg.success(t('backup_import_success', { n: result.count }))
-    } catch (e) {
-      msg.error(String(e))
-    }
-  } else {
-    // 旧格式 JSON
-    try {
-      const json = new TextDecoder().decode(new Uint8Array(data))
-      const count = await invoke<number>('import_providers_legacy', { json, password: importPassword.value })
-      await store.loadProviders()
-      importStatus.value = { type: 'success', text: t('backup_import_success', { n: count }) }
-      msg.success(t('backup_import_success', { n: count }))
-    } catch (e) {
-      msg.error(String(e))
-    }
+  try {
+    const result = await invoke<{ providers_count: number, templates_count: number, skills_count: number }>('import_full_backup', {
+      data,
+      password: importPassword.value,
+      importTemplates: true,
+      importSkills: true
+    })
+    await store.loadProviders()
+    await store.loadTemplates()
+    await store.loadSkills()
+    await store.loadTemplateBindings()
+    importStatus.value = { type: 'success', text: t('full_backup_import_success', { providers: result.providers_count, templates: result.templates_count, skills: result.skills_count }) }
+    msg.success(t('full_backup_import_success', { providers: result.providers_count, templates: result.templates_count, skills: result.skills_count }))
+  } catch (e) {
+    msg.error(String(e))
   }
 
   pendingBackupData.value = null

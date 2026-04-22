@@ -646,6 +646,513 @@ fn hide_to_tray(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// ── CLAUDE.md 模板管理 ───────────────────────────────────────────────────────────
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Template {
+    pub name: String,
+    pub content: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TemplateBinding {
+    pub project_path: String,
+    pub template_name: String,
+    pub updated_at: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TemplateBindingsFile {
+    pub bindings: Vec<TemplateBinding>,
+}
+
+fn templates_dir() -> std::path::PathBuf {
+    config::mmycs_dir().join("templates")
+}
+
+fn template_bindings_path() -> std::path::PathBuf {
+    config::mmycs_dir().join("template_bindings.json")
+}
+
+#[tauri::command]
+fn get_templates() -> Result<Vec<Template>, String> {
+    let dir = templates_dir();
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        return Ok(vec![]);
+    }
+    let mut templates = vec![];
+    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if entry.path().extension().and_then(|e| e.to_str()) == Some("md") {
+            let name = entry.path().file_stem().and_then(|n| n.to_str()).unwrap_or("").to_string();
+            let content = std::fs::read_to_string(entry.path()).map_err(|e| e.to_string())?;
+            // 从文件名推断创建/更新时间（简化处理）
+            templates.push(Template {
+                name,
+                content,
+                created_at: chrono::Utc::now().to_rfc3339(),
+                updated_at: chrono::Utc::now().to_rfc3339(),
+            });
+        }
+    }
+    templates.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(templates)
+}
+
+#[tauri::command]
+fn save_template(name: String, content: String) -> Result<(), String> {
+    let dir = templates_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("{}.md", name));
+    std::fs::write(&path, &content).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_template(name: String) -> Result<(), String> {
+    let path = templates_dir().join(format!("{}.md", name));
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    // 同时删除相关绑定
+    let bindings_path = template_bindings_path();
+    if bindings_path.exists() {
+        let mut bindings: TemplateBindingsFile = std::fs::read_to_string(&bindings_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(TemplateBindingsFile { bindings: vec![] });
+        bindings.bindings.retain(|b| b.template_name != name);
+        std::fs::write(&bindings_path, serde_json::to_string_pretty(&bindings).unwrap_or_default())
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn get_template_bindings() -> Result<Vec<TemplateBinding>, String> {
+    let path = template_bindings_path();
+    if !path.exists() {
+        return Ok(vec![]);
+    }
+    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let bindings: TemplateBindingsFile = serde_json::from_str(&content)
+        .map_err(|_| "解析失败".to_string())?;
+    Ok(bindings.bindings)
+}
+
+#[tauri::command]
+fn bind_template(project_path: String, template_name: String) -> Result<(), String> {
+    let path = template_bindings_path();
+    let mut bindings: TemplateBindingsFile = if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(TemplateBindingsFile { bindings: vec![] })
+    } else {
+        TemplateBindingsFile { bindings: vec![] }
+    };
+    // 更新或添加绑定
+    let norm_path = config::normalize_project_path(&project_path);
+    let now = chrono::Utc::now().to_rfc3339();
+    let existing = bindings.bindings.iter_mut().find(|b| b.project_path == norm_path);
+    if let Some(b) = existing {
+        b.template_name = template_name;
+        b.updated_at = now;
+    } else {
+        bindings.bindings.push(TemplateBinding {
+            project_path: norm_path,
+            template_name,
+            updated_at: now,
+        });
+    }
+    std::fs::write(&path, serde_json::to_string_pretty(&bindings).unwrap_or_default())
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn unbind_template(project_path: String) -> Result<(), String> {
+    let path = template_bindings_path();
+    if !path.exists() { return Ok(()); }
+    let mut bindings: TemplateBindingsFile = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or(TemplateBindingsFile { bindings: vec![] });
+    let norm_path = config::normalize_project_path(&project_path);
+    bindings.bindings.retain(|b| b.project_path != norm_path);
+    std::fs::write(&path, serde_json::to_string_pretty(&bindings).unwrap_or_default())
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn inject_claude_md(project_path: String, template_name: String) -> Result<String, String> {
+    // 读取模板内容
+    let template_path = templates_dir().join(format!("{}.md", template_name));
+    if !template_path.exists() {
+        return Err("模板不存在".to_string());
+    }
+    let content = std::fs::read_to_string(&template_path).map_err(|e| e.to_string())?;
+
+    // 写入项目的 .claude/CLAUDE.md
+    let norm_path = config::normalize_project_path(&project_path);
+    let claude_dir = std::path::Path::new(&norm_path).join(".claude");
+    std::fs::create_dir_all(&claude_dir).map_err(|e| e.to_string())?;
+    let claude_md_path = claude_dir.join("CLAUDE.md");
+    std::fs::write(&claude_md_path, &content).map_err(|e| e.to_string())?;
+
+    // 同时更新绑定
+    bind_template(project_path, template_name)?;
+
+    Ok(claude_md_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn get_project_template(project_path: String) -> Result<Option<String>, String> {
+    let bindings = get_template_bindings()?;
+    let norm_path = config::normalize_project_path(&project_path);
+    let binding = bindings.iter().find(|b| b.project_path == norm_path);
+    Ok(binding.map(|b| b.template_name.clone()))
+}
+
+// ── Skill 模板管理 ───────────────────────────────────────────────────────────────
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Skill {
+    pub name: String,
+    pub content: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+fn skills_dir() -> std::path::PathBuf {
+    config::mmycs_dir().join("skills")
+}
+
+#[tauri::command]
+fn get_skills() -> Result<Vec<Skill>, String> {
+    let dir = skills_dir();
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        return Ok(vec![]);
+    }
+    let mut skills = vec![];
+    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if entry.path().extension().and_then(|e| e.to_str()) == Some("md") {
+            let name = entry.path().file_stem().and_then(|n| n.to_str()).unwrap_or("").to_string();
+            let content = std::fs::read_to_string(entry.path()).map_err(|e| e.to_string())?;
+            skills.push(Skill {
+                name,
+                content,
+                created_at: chrono::Utc::now().to_rfc3339(),
+                updated_at: chrono::Utc::now().to_rfc3339(),
+            });
+        }
+    }
+    skills.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(skills)
+}
+
+#[tauri::command]
+fn save_skill(name: String, content: String) -> Result<(), String> {
+    let dir = skills_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("{}.md", name));
+    std::fs::write(&path, &content).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_skill(name: String) -> Result<(), String> {
+    let path = skills_dir().join(format!("{}.md", name));
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+// ── 完整备份导出/导入（v3.5）──────────────────────────────────────────────────────
+const BACKUP_VERSION_V3: u8 = 0x03;  // v3 支持完整备份
+
+#[derive(Serialize)]
+pub struct FullBackupResult {
+    pub path: String,
+    pub filename: String,
+    pub included: Vec<String>,  // 包含的内容类型
+}
+
+#[tauri::command]
+fn export_full_backup(password: String, include_templates: bool, include_skills: bool) -> Result<FullBackupResult, String> {
+    // 1. 导出 providers（加密）
+    let providers = config::load_providers().map_err(|e| e.to_string())?;
+    let machine_key = config::get_or_create_key().map_err(|e| e.to_string())?;
+    let providers_json = serde_json::to_string(&providers).map_err(|e| e.to_string())?;
+
+    let (flag, providers_encrypted) = if password.is_empty() {
+        (FLAG_NO_PASSWORD, crypto::encrypt(&providers_json, &machine_key).map_err(|e| e.to_string())?)
+    } else {
+        let backup_key = derive_key_from_password(&password);
+        (FLAG_HAS_PASSWORD, crypto::encrypt(&providers_json, &backup_key).map_err(|e| e.to_string())?)
+    };
+
+    // 2. 收集模板
+    let templates: Vec<Template> = if include_templates {
+        get_templates().unwrap_or_default()
+    } else {
+        vec![]
+    };
+
+    // 3. 收集 skills
+    let skills: Vec<Skill> = if include_skills {
+        get_skills().unwrap_or_default()
+    } else {
+        vec![]
+    };
+
+    // 4. 收集应用配置
+    let app_config = config::load_app_config().map_err(|e| e.to_string())?;
+    let bindings = get_template_bindings().unwrap_or_default();
+
+    // 5. 构建完整备份 JSON
+    let full_backup = serde_json::json!({
+        "providers_encrypted": providers_encrypted,
+        "templates": templates.iter().map(|t| serde_json::json!({
+            "name": t.name,
+            "content": t.content
+        })).collect::<Vec<_>>(),
+        "skills": skills.iter().map(|s| serde_json::json!({
+            "name": s.name,
+            "content": s.content
+        })).collect::<Vec<_>>(),
+        "app_config": {
+            "language": app_config.language,
+            "backupExportPath": app_config.backup_export_path,
+            "defaultConfigDir": app_config.default_config_dir,
+        },
+        "template_bindings": bindings,
+    });
+    let backup_json = serde_json::to_string(&full_backup).map_err(|e| e.to_string())?;
+
+    // 6. 加密整个备份
+    let backup_encrypted = if password.is_empty() {
+        crypto::encrypt(&backup_json, &machine_key).map_err(|e| e.to_string())?
+    } else {
+        let backup_key = derive_key_from_password(&password);
+        crypto::encrypt(&backup_json, &backup_key).map_err(|e| e.to_string())?
+    };
+
+    // 7. 构建二进制文件
+    let mut output: Vec<u8> = vec![];
+    output.extend_from_slice(BACKUP_MAGIC);
+    output.push(BACKUP_VERSION_V3);
+    output.extend_from_slice(&machine_key_hash(&machine_key));
+    output.push(flag);
+    if flag == FLAG_HAS_PASSWORD {
+        let pwd_hash = derive_key_from_password(&password);
+        output.extend_from_slice(&machine_key_hash(&pwd_hash));
+    }
+    output.extend_from_slice(backup_encrypted.as_bytes());
+
+    // 8. 写入文件
+    let backups_dir = config::mmycs_dir().join("backups");
+    std::fs::create_dir_all(&backups_dir).map_err(|e| e.to_string())?;
+    let now = chrono::Local::now();
+    let filename = format!("mmycs_full_backup_{}.mmycs", now.format("%Y%m%d_%H%M%S"));
+    let filepath = backups_dir.join(&filename);
+    std::fs::write(&filepath, &output).map_err(|e| e.to_string())?;
+
+    let mut included: Vec<String> = vec!["providers".to_string()];
+    if include_templates { included.push("templates".to_string()); }
+    if include_skills { included.push("skills".to_string()); }
+
+    Ok(FullBackupResult {
+        path: filepath.to_string_lossy().to_string(),
+        filename,
+        included,
+    })
+}
+
+#[derive(Serialize)]
+pub struct FullImportResult {
+    pub providers_count: usize,
+    pub templates_count: usize,
+    pub skills_count: usize,
+    pub same_machine: bool,
+    pub need_password: bool,
+}
+
+#[tauri::command]
+fn check_full_backup_file(data: Vec<u8>) -> Result<BackupInfo, String> {
+    check_backup_file(data)  // 使用相同的检查逻辑
+}
+
+#[tauri::command]
+fn import_full_backup(data: Vec<u8>, password: String, import_templates: bool, import_skills: bool) -> Result<FullImportResult, String> {
+    if data.len() < 39 {
+        return Err("文件格式无效".to_string());
+    }
+
+    // 检查 Magic
+    if &data[0..5] != BACKUP_MAGIC {
+        return Err("不是 MMYCS 备份文件".to_string());
+    }
+
+    // 检查版本
+    let version = data[5];
+    if version != BACKUP_VERSION && version != BACKUP_VERSION_V3 {
+        return Err(format!("不支持的版本: {}", version));
+    }
+
+    // 读取机器密钥 hash
+    let stored_hash: [u8; 32] = data[6..38].try_into().map_err(|_| "hash 读取失败")?;
+
+    // 检查是否同机
+    let machine_key = config::get_or_create_key().map_err(|e| e.to_string())?;
+    let current_hash = machine_key_hash(&machine_key);
+    let same_machine = stored_hash == current_hash;
+
+    // 读取 flag
+    let flag = data[38];
+    let has_password = flag == FLAG_HAS_PASSWORD;
+
+    // 计算加密数据起始位置
+    let data_start = if has_password { 39 + 32 } else { 39 };
+    if data.len() < data_start {
+        return Err("文件数据不完整".to_string());
+    }
+
+    // 提取加密数据
+    let encrypted_data = String::from_utf8_lossy(&data[data_start..]).to_string();
+
+    // 解密
+    let backup_json = if has_password {
+        if password.is_empty() {
+            return Err("需要输入备份密码".to_string());
+        }
+        let backup_key = derive_key_from_password(&password);
+        crypto::decrypt(&encrypted_data, &backup_key)
+            .map_err(|_| "密码错误或文件损坏".to_string())?
+    } else {
+        if same_machine {
+            crypto::decrypt(&encrypted_data, &machine_key)
+                .map_err(|e| format!("解密失败: {}", e))?
+        } else {
+            return Err("此备份文件未设置密码保护，仅能在原机器上导入。".to_string());
+        }
+    };
+
+    // 解析完整备份
+    let backup: serde_json::Value = serde_json::from_str(&backup_json)
+        .map_err(|e| format!("解析失败: {}", e))?;
+
+    // 导入 providers
+    let providers_count = if let Some(providers_enc) = backup.get("providers_encrypted").and_then(|v| v.as_str()) {
+        // 先解密 providers
+        let providers_json = if has_password {
+            let backup_key = derive_key_from_password(&password);
+            crypto::decrypt(providers_enc, &backup_key).map_err(|_| "providers 解密失败".to_string())?
+        } else {
+            crypto::decrypt(providers_enc, &machine_key).map_err(|e| format!("providers 解密失败: {}", e))?
+        };
+        let providers: Vec<Provider> = serde_json::from_str(&providers_json).map_err(|e| e.to_string())?;
+        let count = providers.len();
+        for p in &providers {
+            config::save_provider(p).map_err(|e| e.to_string())?;
+        }
+        count
+    } else {
+        0
+    };
+
+    // 导入 templates
+    let templates_count = if import_templates {
+        if let Some(templates_arr) = backup.get("templates").and_then(|v| v.as_array()) {
+            for t in templates_arr {
+                if let (Some(name), Some(content)) = (t.get("name").and_then(|n| n.as_str()), t.get("content").and_then(|c| c.as_str())) {
+                    save_template(name.to_string(), content.to_string()).ok();
+                }
+            }
+            templates_arr.len()
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    // 导入 skills
+    let skills_count = if import_skills {
+        if let Some(skills_arr) = backup.get("skills").and_then(|v| v.as_array()) {
+            for s in skills_arr {
+                if let (Some(name), Some(content)) = (s.get("name").and_then(|n| n.as_str()), s.get("content").and_then(|c| c.as_str())) {
+                    save_skill(name.to_string(), content.to_string()).ok();
+                }
+            }
+            skills_arr.len()
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    // 导入应用配置
+    if let Some(cfg) = backup.get("app_config") {
+        let mut app_cfg = config::load_app_config().map_err(|e| e.to_string())?;
+        if let Some(lang) = cfg.get("language").and_then(|l| l.as_str()) {
+            app_cfg.language = lang.to_string();
+        }
+        if let Some(path) = cfg.get("backupExportPath").and_then(|p| p.as_str()) {
+            app_cfg.backup_export_path = Some(path.to_string());
+        }
+        if let Some(dir) = cfg.get("defaultConfigDir").and_then(|d| d.as_str()) {
+            app_cfg.default_config_dir = Some(dir.to_string());
+        }
+        config::save_app_config(&app_cfg).map_err(|e| e.to_string())?;
+    }
+
+    // 导入模板绑定
+    if let Some(bindings_arr) = backup.get("template_bindings").and_then(|v| v.as_array()) {
+        let bindings_path = template_bindings_path();
+        let mut bindings: TemplateBindingsFile = if bindings_path.exists() {
+            std::fs::read_to_string(&bindings_path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or(TemplateBindingsFile { bindings: vec![] })
+        } else {
+            TemplateBindingsFile { bindings: vec![] }
+        };
+        for b in bindings_arr {
+            if let (Some(path), Some(name), Some(time)) = (
+                b.get("project_path").and_then(|p| p.as_str()),
+                b.get("template_name").and_then(|n| n.as_str()),
+                b.get("updated_at").and_then(|t| t.as_str())
+            ) {
+                // 不重复添加
+                if !bindings.bindings.iter().any(|existing| existing.project_path == path) {
+                    bindings.bindings.push(TemplateBinding {
+                        project_path: path.to_string(),
+                        template_name: name.to_string(),
+                        updated_at: time.to_string(),
+                    });
+                }
+            }
+        }
+        std::fs::write(&bindings_path, serde_json::to_string_pretty(&bindings).unwrap_or_default())
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(FullImportResult {
+        providers_count,
+        templates_count,
+        skills_count,
+        same_machine,
+        need_password: has_password,
+    })
+}
+
 // ── 检测哪些项目目录有正在运行的 Claude Code CLI ──────────────────────────────
 #[derive(Serialize)]
 pub struct ActiveClaudeProcess {
@@ -1201,6 +1708,9 @@ pub fn run() {
             import_backup,
             check_backup_file,
             import_providers_legacy,
+            export_full_backup,
+            import_full_backup,
+            check_full_backup_file,
             fetch_models,
             test_provider,
             detect_instances,
@@ -1209,6 +1719,19 @@ pub fn run() {
             get_window_state,
             hide_to_tray,
             check_active_claude_processes,
+            // Template management
+            get_templates,
+            save_template,
+            delete_template,
+            get_template_bindings,
+            bind_template,
+            unbind_template,
+            inject_claude_md,
+            get_project_template,
+            // Skill management
+            get_skills,
+            save_skill,
+            delete_skill,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

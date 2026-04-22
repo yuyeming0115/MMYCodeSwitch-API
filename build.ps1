@@ -11,11 +11,14 @@
     Build single-file exe using 7-Zip self-extracting archive
 .PARAMETER Clean
     Clean old build artifacts before building
+.PARAMETER RefreshIcon
+    Refresh Windows icon cache after build (use when icon changed)
 .EXAMPLE
     .\build.ps1                          # NSIS installer
     .\build.ps1 -Portable               # Portable folder (run directly)
     .\build.ps1 -SingleFile             # Single .exe file (requires 7z)
     .\build.ps1 -Clean                  # Clean then rebuild
+    .\build.ps1 -Portable -RefreshIcon  # Portable + refresh icon cache
 #>
 
 param(
@@ -23,7 +26,8 @@ param(
     [string]$Mode = "release",
     [switch]$Portable,
     [switch]$SingleFile,
-    [switch]$Clean
+    [switch]$Clean,
+    [switch]$RefreshIcon
 )
 
 $ErrorActionPreference = "Stop"
@@ -291,5 +295,44 @@ Data is stored alongside this executable.
         } elseif (Test-Path "$ProjectRoot\src-tauri\target\debug\bundle") {
             explorer.exe "$ProjectRoot\src-tauri\target\debug\bundle"
         }
+    }
+}
+
+# ── 刷新图标缓存 ──────────────────────────────────────────────────────────────
+if ($RefreshIcon) {
+    Write-Host ""
+    Write-Host "[*] Refreshing Windows icon cache..." -ForegroundColor Yellow
+
+    try {
+        # 方法1: 使用 ie4uinit 刷新
+        Start-Process -FilePath "ie4uinit.exe" -ArgumentList "-show" -NoNewWindow -Wait -ErrorAction SilentlyContinue
+
+        # 方法2: 删除图标缓存文件
+        $iconCachePath = "$env:LOCALAPPDATA\IconCache.db"
+        if (Test-Path $iconCachePath) {
+            Remove-Item -Force $iconCachePath -ErrorAction SilentlyContinue
+            Write-Host "   Deleted IconCache.db" -ForegroundColor Gray
+        }
+
+        # 方法3: 删除 Explorer 图标缓存
+        $explorerCacheDir = "$env:LOCALAPPDATA\Microsoft\Windows\Explorer"
+        if (Test-Path $explorerCacheDir) {
+            Get-ChildItem -Path $explorerCacheDir -Filter "iconcache*" | Remove-Item -Force -ErrorAction SilentlyContinue
+            Get-ChildItem -Path $explorerCacheDir -Filter "thumbcache*" | Remove-Item -Force -ErrorAction SilentlyContinue
+            Write-Host "   Deleted Explorer icon/thumbnail cache" -ForegroundColor Gray
+        }
+
+        # 方法4: 重启 Explorer
+        Write-Host "   Restarting Windows Explorer..." -ForegroundColor Gray
+        Stop-Process -Name "explorer" -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        Start-Process -FilePath "explorer.exe" -ErrorAction SilentlyContinue
+
+        Write-Host "[OK] Icon cache refreshed!" -ForegroundColor Green
+        Write-Host "     Your new icon should now be visible." -ForegroundColor Gray
+    } catch {
+        Write-Host "[WARN] Could not fully refresh icon cache. Try manually:" -ForegroundColor Yellow
+        Write-Host "       1. Delete %LOCALAPPDATA%\IconCache.db" -ForegroundColor DarkGray
+        Write-Host "       2. Restart Windows Explorer" -ForegroundColor DarkGray
     }
 }

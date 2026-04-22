@@ -106,7 +106,7 @@ pub fn mmycs_dir() -> PathBuf {
 
 pub fn ensure_dirs() -> Result<()> {
     let base = mmycs_dir();
-    for sub in &["providers", "instances", "backups", "logs", "projects"] {
+    for sub in &["providers", "instances", "backups", "logs", "projects", "templates", "skills"] {
         std::fs::create_dir_all(base.join(sub))?;
     }
     Ok(())

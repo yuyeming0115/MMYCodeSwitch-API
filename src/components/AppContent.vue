@@ -12,14 +12,16 @@ import ProviderForm from './ProviderForm.vue'
 import Settings from './Settings.vue'
 import QuickSetup from './QuickSetup.vue'
 import ProjectList from './ProjectList.vue'
+import TemplateManager from './TemplateManager.vue'
+import SkillManager from './SkillManager.vue'
 
 const { t } = useI18n()
 const store = useAppStore()
 const msg = useMessage()
 const dialog = useDialog()
 
-// 当前页面：'main' | 'quickSetup' | 'settings' | 'form'
-const currentPage = ref<'main' | 'quickSetup' | 'settings' | 'form'>('main')
+// 当前页面
+const currentPage = ref<'main' | 'quickSetup' | 'settings' | 'form' | 'templates' | 'skills'>('main')
 const editingProvider = ref<Provider | undefined>()
 const isDark = defineModel<boolean>('isDark', { default: false })
 
@@ -99,6 +101,14 @@ function openEdit(p: Provider) {
 function goBack() {
   currentPage.value = 'main'
   editingProvider.value = undefined
+}
+
+function openTemplates() {
+  currentPage.value = 'templates'
+}
+
+function openSkills() {
+  currentPage.value = 'skills'
 }
 
 /// 多项目模式核心流程：点击 Provider → 弹文件夹选择器 → 检测重复 → 确认 → 注入 → 启动CLI
@@ -317,17 +327,20 @@ const statusInfo = computed(() => t('right_click_hint'))
 
       <footer class="toolbar">
         <n-button type="primary" size="large" @click="currentPage = 'quickSetup'">⚡ {{ t('quick_setup') }}</n-button>
-        <n-button size="large" secondary @click="isDark = !isDark">{{ isDark ? '☀️' : '🌙' }}</n-button>
-        <n-button size="large" secondary @click="currentPage = 'settings'">⚙️</n-button>
+        <n-button size="large" secondary @click="currentPage = 'templates'">📝 {{ t('templates') }}</n-button>
+        <n-button size="large" secondary @click="currentPage = 'skills'">🔧 {{ t('skills') }}</n-button>
+        <n-button size="large" secondary @click="isDark = !isDark" class="always-visible">{{ isDark ? '☀️' : '🌙' }}</n-button>
+        <n-button size="large" secondary @click="currentPage = 'settings'" class="always-visible">⚙️</n-button>
       </footer>
 
       <footer class="statusbar">
-        <span>{{ statusInfo }}</span>
+        <span class="statusbar-left">{{ statusInfo }}</span>
         <n-button
           v-if="store.activeProjects.length > 0"
           size="tiny"
           type="error"
           secondary
+          class="statusbar-right"
           @click="handleCleanupProjects"
         >🧹 {{ t('cleanup_all_projects') }}</n-button>
       </footer>
@@ -344,6 +357,8 @@ const statusInfo = computed(() => t('right_click_hint'))
     <Settings
       v-if="currentPage === 'settings'"
       @back="goBack"
+      @openTemplates="openTemplates"
+      @openSkills="openSkills"
     />
 
     <!-- 编辑/添加供应商页面 -->
@@ -352,6 +367,18 @@ const statusInfo = computed(() => t('right_click_hint'))
       :provider="editingProvider"
       @back="goBack"
       @done="goBack(); store.loadProviders()"
+    />
+
+    <!-- 模板管理页面 -->
+    <TemplateManager
+      v-if="currentPage === 'templates'"
+      @back="goBack"
+    />
+
+    <!-- Skill 管理页面 -->
+    <SkillManager
+      v-if="currentPage === 'skills'"
+      @back="goBack"
     />
   </div>
 </template>
@@ -386,16 +413,31 @@ const statusInfo = computed(() => t('right_click_hint'))
 }
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: 8px;
+  padding: 10px 16px;
   border-top: 1px solid #eee;
   flex-shrink: 0;
   background: #fafafa;
+  min-height: 52px;
+}
+.toolbar-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1;
+  justify-content: center;
+}
+.toolbar-right {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
 }
 .statusbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   padding: 6px 16px;
@@ -403,7 +445,21 @@ const statusInfo = computed(() => t('right_click_hint'))
   color: #888;
   background: #f5f5f5;
   flex-shrink: 0;
-  gap: 12px;
+  gap: 8px;
+  min-height: 32px;
+}
+.statusbar-left {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.statusbar-right {
+  flex-shrink: 0;
+}
+.always-visible {
+  flex-shrink: 0;
+  order: 100;  /* 放到最后，确保始终可见 */
 }
 
 /* 深色模式适配 */
@@ -418,4 +474,10 @@ body.dark .statusbar {
 body.dark .content { scrollbar-color: rgba(200,200,200,0.12) transparent; }
 body.dark .content::-webkit-scrollbar-thumb { background: rgba(200,200,200,0.12); }
 body.dark .content::-webkit-scrollbar-thumb:hover { background: rgba(200,200,200,0.28); }
+
+/* 响应式：窄屏时按钮变小 */
+@media (max-width: 400px) {
+  .toolbar { gap: 6px; padding: 8px 12px; }
+  .toolbar .n-button { font-size: 12px; }
+}
 </style>
