@@ -106,7 +106,7 @@ pub fn mmycs_dir() -> PathBuf {
 
 pub fn ensure_dirs() -> Result<()> {
     let base = mmycs_dir();
-    for sub in &["providers", "instances", "backups", "logs", "projects", "templates", "skills"] {
+    for sub in &["providers", "instances", "backups", "logs", "projects", "templates", "skills", "provider_templates"] {
         std::fs::create_dir_all(base.join(sub))?;
     }
     Ok(())
@@ -268,5 +268,90 @@ pub fn update_project_binding(project_path: &str, provider_id: &str, provider_na
     });
 
     std::fs::write(dir.join("binding.json"), serde_json::to_string_pretty(&binding)?)?;
+    Ok(())
+}
+
+// ── 供应商模板（Provider Templates）──────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProviderTemplateUrl {
+    pub label: String,
+    pub value: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "protocolHint")]
+    pub protocol_hint: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProviderTemplate {
+    pub id: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "builtinIcon")]
+    pub builtin_icon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "iconFallback")]
+    pub icon_fallback: Option<String>,
+    pub base_urls: Vec<ProviderTemplateUrl>,
+    pub models: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "keyPlaceholder")]
+    pub key_placeholder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "helpUrl")]
+    pub help_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub badge: Option<String>,
+    /// 是否为内置模板
+    #[serde(default)]
+    pub builtin: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// 获取供应商模板目录
+fn provider_templates_dir() -> PathBuf {
+    mmycs_dir().join("provider_templates")
+}
+
+/// 加载用户自定义供应商模板
+pub fn load_provider_templates() -> Result<Vec<ProviderTemplate>> {
+    let dir = provider_templates_dir();
+    let mut templates = vec![];
+    if !dir.exists() { return Ok(templates); }
+    for entry in std::fs::read_dir(&dir)? {
+        let entry = entry?;
+        if entry.path().extension().and_then(|e| e.to_str()) == Some("json") {
+            let s = std::fs::read_to_string(entry.path())?;
+            if let Ok(t) = serde_json::from_str::<ProviderTemplate>(&s) {
+                templates.push(t);
+            }
+        }
+    }
+    templates.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(templates)
+}
+
+/// 保存供应商模板
+pub fn save_provider_template(template: &ProviderTemplate) -> Result<()> {
+    let dir = provider_templates_dir();
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(format!("{}.json", template.id));
+    std::fs::write(path, serde_json::to_string_pretty(template)?)?;
+    Ok(())
+}
+
+/// 删除供应商模板
+pub fn delete_provider_template(id: &str) -> Result<()> {
+    let path = provider_templates_dir().join(format!("{}.json", id));
+    if path.exists() { std::fs::remove_file(path)?; }
     Ok(())
 }

@@ -57,10 +57,11 @@ MMYCodeSwitch-API/
 │   ├── components/               # Vue 组件
 │   │   ├── AppContent.vue        # 主应用容器（页面路由、核心逻辑）
 │   │   ├── ProviderGrid.vue      # 供应商网格展示
-│   │   ├── ProviderForm.vue      # 添加/编辑供应商表单
+│   │   ├── ProviderForm.vue      # 添加/编辑供应商表单（含模板选择）
 │   │   ├── ProjectList.vue       # 已激活项目列表
-│   │   ├── QuickSetup.vue        # 快速配置模板
-│   │   └── Settings.vue          # 设置面板
+│   │   ├── Settings.vue          # 设置面板
+│   │   ├── TemplateManager.vue   # CLAUDE.md 模板管理
+│   │   └── SkillManager.vue      # Skill 模板管理
 │   ├── stores/
 │   │   └ app.ts                  # Pinia 全局状态管理
 │   ├── i18n/
@@ -110,7 +111,7 @@ MMYCodeSwitch-API/
 #### 3.1.1 AppContent.vue - 主应用容器
 
 **职责：**
-- 页面路由控制（main / quickSetup / settings / form）
+- 页面路由控制（main / settings / form / templates / skills）
 - 供应商切换流程（文件夹选择 → 检测重复 → 确认 → 注入 → 启动CLI）
 - 项目列表管理（移除项目、继续开发、一键清理）
 - 深浅色模式切换与持久化
@@ -148,9 +149,19 @@ MMYCodeSwitch-API/
 
 **职责：**
 - 添加/编辑供应商配置
+- **顶部模板选择区**：内置主流平台模板（阿里云百炼、MiniMax、智谱、Kimi、火山引擎、腾讯云）
+- **自定义模板支持**：粘贴解析或手动填写添加自定义模板
 - 支持 API 模式和官方账号登录模式
 - 粘贴解析功能（智能识别 Base URL、API Key、模型列表）
 - 图标上传（PNG/SVG）
+
+**模板功能特性：**
+| 特性 | 说明 |
+|------|------|
+| 内置模板 | 阿里云、MiniMax、智谱、Kimi 等主流平台预配置 |
+| 自定义模板 | 用户可添加自己的模板，支持粘贴解析和手动填写 |
+| 模板预填充 | 点击模板自动填充 Base URL、图标、模型列表 |
+| 多协议支持 | 部分模板支持多种 API 协议（Anthropic/OpenAI 兼容） |
 
 **智能解析支持的格式：**
 | 输入格式 | 识别规则 |
@@ -185,6 +196,24 @@ interface Provider {
   updated_at: string
 }
 
+interface ProviderTemplate {
+  id: string
+  name: string
+  icon?: string
+  color?: string
+  description?: string
+  builtinIcon?: string
+  iconFallback?: string
+  baseUrls: { label: string; value: string; hint?: string }[]
+  models: string[]
+  keyPlaceholder?: string
+  helpUrl?: string
+  badge?: string
+  builtin: boolean             // 区分内置/用户自定义模板
+  created_at: string
+  updated_at: string
+}
+
 interface ActiveProject {
   id: string
   name: string
@@ -202,6 +231,9 @@ interface ActiveProject {
 - `injectToProject(projectPath, providerId)` - 注入 API 到项目
 - `upsertProvider(input)` - 创建/更新供应商
 - `getProjectSessions(projectPath)` - 获取会话归档
+- `loadProviderTemplates()` - 加载供应商模板列表
+- `saveProviderTemplate(input)` - 保存自定义供应商模板
+- `deleteProviderTemplate(id)` - 删除自定义供应商模板
 
 ---
 
@@ -229,6 +261,9 @@ interface ActiveProject {
 | `test_provider` | 供应商连通性测试 |
 | `detect_instances` | 自动检测 Claude Code 实例 |
 | `check_active_claude_processes` | 检测活跃的 Claude CLI 进程 |
+| `get_provider_templates` | 获取供应商模板列表（内置 + 用户自定义） |
+| `save_provider_template` | 保存自定义供应商模板 |
+| `delete_provider_template` | 删除自定义供应商模板 |
 
 **系统托盘功能：**
 - 快速切换供应商（子菜单）
@@ -245,6 +280,15 @@ interface ActiveProject {
 ├── .key                         # 加密密钥（自动生成）
 ├── providers/                   # 全局供应商池
 │   ├── provider_xxx.json
+│   └── ...
+├── provider_templates/          # 供应商模板（用户自定义）
+│   ├── custom_xxx.json
+│   └── ...
+├── templates/                   # CLAUDE.md 模板
+│   ├── xxx.md
+│   └── ...
+├── skills/                      # Skill 模板
+│   ├── xxx.md
 │   └── ...
 ├── projects/                    # 项目专属配置目录
 │   ├── {project_hash}/          # 项目路径 MD5 哈希
@@ -434,7 +478,7 @@ const ENV_KEYS: &[&str] = &[
 │  │        ...路径截断...                       ││
 │  └─────────────────────────────────────────────┘│
 ├─────────────────────────────────────────────────┤
-│  [⚡ 快速配置] [🌙] [⚙️]                         │ ← 工具栏
+│  [📝 模板] [🔧 Skill] [🌙] [⚙️]                 │ ← 工具栏
 ├─────────────────────────────────────────────────┤
 │  右键卡片可编辑/删除        [🧹 一键清理]       │ ← 状态栏
 └─────────────────────────────────────────────────┘
@@ -482,9 +526,11 @@ const ENV_KEYS: &[&str] = &[
 ### 9.2 用户体验优化
 
 1. **一键切换流程：** 点击 → 选文件夹 → 自动注入 → 自动启动 CLI
-2. **系统托盘快捷操作：** 右键菜单快速切换供应商
-3. **深浅色模式切换：** 状态持久化，重启恢复
-4. **中英双语实时切换：** 国际化支持
+2. **统一配置入口：** 添加供应商页面顶部集成平台模板，点击即预填充
+3. **自定义模板支持：** 用户可添加自定义供应商模板，粘贴解析或手动填写
+4. **系统托盘快捷操作：** 右键菜单快速切换供应商
+5. **深浅色模式切换：** 状态持久化，重启恢复
+6. **中英双语实时切换：** 国际化支持
 
 ---
 

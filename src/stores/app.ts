@@ -72,6 +72,32 @@ export interface Skill {
   updated_at: string
 }
 
+// 供应商模板类型
+export interface ProviderTemplateUrl {
+  label: string
+  value: string
+  hint?: string
+  protocolHint?: string
+}
+
+export interface ProviderTemplate {
+  id: string
+  name: string
+  icon?: string
+  color?: string
+  description?: string
+  builtinIcon?: string
+  iconFallback?: string
+  baseUrls: ProviderTemplateUrl[]
+  models: string[]
+  keyPlaceholder?: string
+  helpUrl?: string
+  badge?: string
+  builtin: boolean
+  created_at: string
+  updated_at: string
+}
+
 export const useAppStore = defineStore('app', () => {
   const providers = ref<Provider[]>([])
   const config = ref<AppConfig>({ language: 'zh', instances: [], activeProjects: [] })
@@ -80,6 +106,7 @@ export const useAppStore = defineStore('app', () => {
   const templates = ref<Template[]>([])
   const templateBindings = ref<TemplateBinding[]>([])
   const skills = ref<Skill[]>([])
+  const providerTemplates = ref<ProviderTemplate[]>([])
 
   const activeInstance = () => config.value.instances.find(i => i.id === activeInstanceId.value) ?? config.value.instances[0]
 
@@ -91,6 +118,7 @@ export const useAppStore = defineStore('app', () => {
     await loadTemplates()
     await loadTemplateBindings()
     await loadSkills()
+    await loadProviderTemplates()
   }
 
   async function loadConfig() {
@@ -205,9 +233,24 @@ export const useAppStore = defineStore('app', () => {
     await loadSkills()
   }
 
+  // Provider Templates 管理
+  async function loadProviderTemplates() {
+    providerTemplates.value = await invoke<ProviderTemplate[]>('get_provider_templates')
+  }
+
+  async function saveProviderTemplate(input: object) {
+    await invoke('save_provider_template', { input })
+    await loadProviderTemplates()
+  }
+
+  async function deleteProviderTemplate(id: string) {
+    await invoke('delete_provider_template', { id })
+    await loadProviderTemplates()
+  }
+
   return {
     providers, config, activeInstanceId, activeInstance,
-    activeProjects, templates, templateBindings, skills,
+    activeProjects, templates, templateBindings, skills, providerTemplates,
     init, loadProviders, upsertProvider, deleteProvider,
     switchProvider, saveConfig,
     injectToProject, removeActiveProject, loadActiveProjects,
@@ -218,5 +261,7 @@ export const useAppStore = defineStore('app', () => {
     injectClaudeMd, getProjectTemplate,
     // Skill
     loadSkills, saveSkill, deleteSkill,
+    // Provider Templates
+    loadProviderTemplates, saveProviderTemplate, deleteProviderTemplate,
   }
 })

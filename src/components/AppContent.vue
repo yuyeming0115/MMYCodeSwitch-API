@@ -10,7 +10,6 @@ import { invoke } from '@tauri-apps/api/core'
 import ProviderGrid from './ProviderGrid.vue'
 import ProviderForm from './ProviderForm.vue'
 import Settings from './Settings.vue'
-import QuickSetup from './QuickSetup.vue'
 import ProjectList from './ProjectList.vue'
 import TemplateManager from './TemplateManager.vue'
 import SkillManager from './SkillManager.vue'
@@ -21,7 +20,7 @@ const msg = useMessage()
 const dialog = useDialog()
 
 // 当前页面
-const currentPage = ref<'main' | 'quickSetup' | 'settings' | 'form' | 'templates' | 'skills'>('main')
+const currentPage = ref<'main' | 'settings' | 'form' | 'templates' | 'skills'>('main')
 const editingProvider = ref<Provider | undefined>()
 const isDark = defineModel<boolean>('isDark', { default: false })
 
@@ -326,7 +325,6 @@ const statusInfo = computed(() => t('right_click_hint'))
       </div>
 
       <footer class="toolbar">
-        <n-button type="primary" size="large" @click="currentPage = 'quickSetup'">⚡ {{ t('quick_setup') }}</n-button>
         <n-button size="large" secondary @click="currentPage = 'templates'">📝 {{ t('templates') }}</n-button>
         <n-button size="large" secondary @click="currentPage = 'skills'">🔧 {{ t('skills') }}</n-button>
         <n-button size="large" secondary @click="isDark = !isDark" class="always-visible">{{ isDark ? '☀️' : '🌙' }}</n-button>
@@ -345,13 +343,6 @@ const statusInfo = computed(() => t('right_click_hint'))
         >🧹 {{ t('cleanup_all_projects') }}</n-button>
       </footer>
     </div>
-
-    <!-- 快速配置页面 -->
-    <QuickSetup
-      v-if="currentPage === 'quickSetup'"
-      @back="goBack"
-      @done="goBack(); store.loadProviders()"
-    />
 
     <!-- 设置页面 -->
     <Settings

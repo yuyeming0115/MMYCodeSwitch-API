@@ -8,7 +8,7 @@ mod config;
 mod crypto;
 mod inject;
 
-use config::{AppConfig, ActiveProject, Provider, SessionArchive};
+use config::{AppConfig, ActiveProject, Provider, SessionArchive, ProviderTemplate};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -873,6 +873,241 @@ fn delete_skill(name: String) -> Result<(), String> {
     Ok(())
 }
 
+// ── 供应商模板管理 ───────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize)]
+pub struct ProviderTemplateInput {
+    pub id: Option<String>,
+    pub name: String,
+    pub icon: Option<String>,
+    pub color: Option<String>,
+    pub description: Option<String>,
+    pub builtin_icon: Option<String>,
+    pub icon_fallback: Option<String>,
+    pub base_urls: Vec<ProviderTemplateUrlInput>,
+    pub models: Vec<String>,
+    pub key_placeholder: Option<String>,
+    pub help_url: Option<String>,
+    pub badge: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ProviderTemplateUrlInput {
+    pub label: String,
+    pub value: String,
+    pub hint: Option<String>,
+    pub protocol_hint: Option<String>,
+}
+
+/// 内置供应商模板（硬编码，随应用更新）
+fn get_builtin_provider_templates() -> Vec<ProviderTemplate> {
+    let now = chrono::Utc::now().to_rfc3339();
+    vec![
+        ProviderTemplate {
+            id: "builtin_dashscope".to_string(),
+            name: "阿里云百炼".to_string(),
+            icon: Some("☁️".to_string()),
+            color: Some("#FF6A00".to_string()),
+            description: Some("DashScope · 多模型".to_string()),
+            builtin_icon: Some("icons/dashscope.svg".to_string()),
+            icon_fallback: Some("百炼".to_string()),
+            base_urls: vec![
+                config::ProviderTemplateUrl {
+                    label: "Anthropic 兼容".to_string(),
+                    value: "https://coding.dashscope.aliyuncs.com/apps/anthropic".to_string(),
+                    hint: Some("Claude Code".to_string()),
+                    protocol_hint: Some("适用于 Claude Code、Cursor 等 Anthropic 协议工具".to_string()),
+                },
+                config::ProviderTemplateUrl {
+                    label: "OpenAI 兼容".to_string(),
+                    value: "https://coding.dashscope.aliyuncs.com/v1".to_string(),
+                    hint: Some("LobeChat 等".to_string()),
+                    protocol_hint: Some("适用于 OpenAI SDK 兼容的客户端".to_string()),
+                },
+            ],
+            models: vec!["qwen3.6-plus".to_string(), "qwen3.5-plus".to_string(), "qwen3-max-2026-01-23".to_string(), "qwen3-coder-next".to_string(), "glm-5".to_string(), "glm-4.7".to_string(), "kimi-k2.5".to_string(), "MiniMax-M2.5".to_string()],
+            key_placeholder: Some("sk-xxxxxxxx".to_string()),
+            help_url: Some("https://bailian.console.aliyun.com/".to_string()),
+            badge: Some("推荐".to_string()),
+            builtin: true,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        },
+        ProviderTemplate {
+            id: "builtin_minimax".to_string(),
+            name: "MiniMax".to_string(),
+            icon: Some("〰️".to_string()),
+            color: Some("#FF4D4F".to_string()),
+            description: Some("MiniMax M2.5".to_string()),
+            builtin_icon: Some("icons/minimax.svg".to_string()),
+            icon_fallback: Some("MM".to_string()),
+            base_urls: vec![
+                config::ProviderTemplateUrl {
+                    label: "API".to_string(),
+                    value: "https://api.minimax.chat/v1".to_string(),
+                    hint: None,
+                    protocol_hint: None,
+                },
+            ],
+            models: vec!["MiniMax-M2.5".to_string(), "MiniMax-M2.1".to_string()],
+            key_placeholder: Some("eyJxxxxxx".to_string()),
+            help_url: None,
+            badge: None,
+            builtin: true,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        },
+        ProviderTemplate {
+            id: "builtin_zhipu".to_string(),
+            name: "智谱 Zhipu".to_string(),
+            icon: Some("🅉".to_string()),
+            color: Some("#4D6BFE".to_string()),
+            description: Some("GLM 系列".to_string()),
+            builtin_icon: Some("icons/zhipu.svg".to_string()),
+            icon_fallback: Some("智谱".to_string()),
+            base_urls: vec![
+                config::ProviderTemplateUrl {
+                    label: "OpenAI 兼容".to_string(),
+                    value: "https://open.bigmodel.cn/api/paas/v4".to_string(),
+                    hint: None,
+                    protocol_hint: None,
+                },
+            ],
+            models: vec!["glm-5".to_string(), "glm-4.7".to_string(), "glm-4-flash".to_string(), "glm-4-air".to_string()],
+            key_placeholder: Some("xxxx.xxxx".to_string()),
+            help_url: None,
+            badge: None,
+            builtin: true,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        },
+        ProviderTemplate {
+            id: "builtin_kimi".to_string(),
+            name: "Kimi (月之暗面)".to_string(),
+            icon: Some("🅺".to_string()),
+            color: Some("#7C3AED".to_string()),
+            description: Some("Moonshot k2.5".to_string()),
+            builtin_icon: Some("icons/kimi.svg".to_string()),
+            icon_fallback: Some("K".to_string()),
+            base_urls: vec![
+                config::ProviderTemplateUrl {
+                    label: "API".to_string(),
+                    value: "https://api.moonshot.cn/v1".to_string(),
+                    hint: None,
+                    protocol_hint: None,
+                },
+            ],
+            models: vec!["kimi-k2.5".to_string(), "kimi-k2-0711-preview".to_string(), "moonshot-v1-8k".to_string(), "moonshot-v1-32k".to_string()],
+            key_placeholder: Some("sk-xxxxx".to_string()),
+            help_url: None,
+            badge: None,
+            builtin: true,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        },
+        ProviderTemplate {
+            id: "builtin_huoshan".to_string(),
+            name: "火山引擎".to_string(),
+            icon: Some("🔥".to_string()),
+            color: Some("#F25919".to_string()),
+            description: Some("豆包 Doubao".to_string()),
+            builtin_icon: Some("icons/huoshan.svg".to_string()),
+            icon_fallback: Some("火".to_string()),
+            base_urls: vec![
+                config::ProviderTemplateUrl {
+                    label: "API".to_string(),
+                    value: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
+                    hint: None,
+                    protocol_hint: None,
+                },
+            ],
+            models: vec!["doubao-1-5-pro".to_string(), "doubao-1-5-lite".to_string()],
+            key_placeholder: Some("xxxxx".to_string()),
+            help_url: None,
+            badge: None,
+            builtin: true,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        },
+        ProviderTemplate {
+            id: "builtin_tencent".to_string(),
+            name: "腾讯云".to_string(),
+            icon: Some("☁️".to_string()),
+            color: Some("#0066FF".to_string()),
+            description: Some("混元 Hunyuan".to_string()),
+            builtin_icon: Some("icons/tencent.svg".to_string()),
+            icon_fallback: Some("腾".to_string()),
+            base_urls: vec![
+                config::ProviderTemplateUrl {
+                    label: "OpenAI 兼容".to_string(),
+                    value: "https://api.hunyuan.cloud.tencent.com/v1".to_string(),
+                    hint: None,
+                    protocol_hint: None,
+                },
+            ],
+            models: vec!["hunyuan-turbos-latest".to_string(), "hunyuan-standard".to_string()],
+            key_placeholder: Some("sk-xxxxx".to_string()),
+            help_url: None,
+            badge: None,
+            builtin: true,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        },
+    ]
+}
+
+#[tauri::command]
+fn get_provider_templates() -> Result<Vec<ProviderTemplate>, String> {
+    // 1. 获取内置模板
+    let builtin = get_builtin_provider_templates();
+    // 2. 获取用户自定义模板
+    let custom = config::load_provider_templates().map_err(|e| e.to_string())?;
+    // 3. 合并（内置在前，自定义在后）
+    let mut all = builtin;
+    all.extend(custom);
+    Ok(all)
+}
+
+#[tauri::command]
+fn save_provider_template(input: ProviderTemplateInput) -> Result<ProviderTemplate, String> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let id = input.id.unwrap_or_else(|| format!("custom_{}", chrono::Utc::now().timestamp_millis()));
+    let template = ProviderTemplate {
+        id: id.clone(),
+        name: input.name,
+        icon: input.icon,
+        color: input.color,
+        description: input.description,
+        builtin_icon: input.builtin_icon,
+        icon_fallback: input.icon_fallback,
+        base_urls: input.base_urls.into_iter().map(|u| config::ProviderTemplateUrl {
+            label: u.label,
+            value: u.value,
+            hint: u.hint,
+            protocol_hint: u.protocol_hint,
+        }).collect(),
+        models: input.models,
+        key_placeholder: input.key_placeholder,
+        help_url: input.help_url,
+        badge: input.badge,
+        builtin: false,
+        created_at: now.clone(),
+        updated_at: now,
+    };
+    config::save_provider_template(&template).map_err(|e| e.to_string())?;
+    Ok(template)
+}
+
+#[tauri::command]
+fn delete_provider_template(id: String) -> Result<(), String> {
+    // 禁止删除内置模板
+    if id.starts_with("builtin_") {
+        return Err("无法删除内置模板".to_string());
+    }
+    config::delete_provider_template(&id).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // ── 完整备份导出/导入（v3.5）──────────────────────────────────────────────────────
 const BACKUP_VERSION_V3: u8 = 0x03;  // v3 支持完整备份
 
@@ -1732,6 +1967,10 @@ pub fn run() {
             get_skills,
             save_skill,
             delete_skill,
+            // Provider templates
+            get_provider_templates,
+            save_provider_template,
+            delete_provider_template,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
