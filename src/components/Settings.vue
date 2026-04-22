@@ -28,13 +28,65 @@
         </div>
 
         <n-divider>{{ t('export_backup') }} / {{ t('import_backup') }}</n-divider>
-        <n-form-item :label="t('backup_password')">
-          <n-input v-model:value="backupPassword" type="password" show-password-on="click" :placeholder="t('backup_password_hint')" />
+        <p class="hint-text">{{ t('backup_password_desc') }}</p>
+
+        <!-- 导出路径 -->
+        <n-form-item :label="t('backup_export_path')">
+          <n-space align="center" style="width: 100%">
+            <n-input
+              v-model:value="exportPath"
+              style="width: 220px"
+              :placeholder="t('backup_export_path_hint')"
+            />
+            <n-button dashed @click="browseExportPath">
+              <template #icon><n-icon><folder-outline-icon /></n-icon></template>
+            </n-button>
+            <n-button v-if="exportPath" dashed size="small" @click="clearExportPath">清除</n-button>
+          </n-space>
         </n-form-item>
-        <n-space>
-          <n-button @click="doExport">{{ t('export_backup') }}</n-button>
-          <n-button @click="doImport">{{ t('import_backup') }}</n-button>
-        </n-space>
+
+        <!-- 密码设置 -->
+        <n-form-item :label="t('backup_password_optional')">
+          <n-space align="center">
+            <n-checkbox v-model:checked="usePassword">
+              {{ t('backup_set_password') }}
+            </n-checkbox>
+            <n-input
+              v-if="usePassword"
+              v-model:value="backupPassword"
+              type="password"
+              show-password-on="click"
+              style="width:180px"
+              :placeholder="t('backup_password_label')"
+            />
+          </n-space>
+        </n-form-item>
+
+        <!-- 导出按钮 -->
+        <n-form-item :label="t('export_backup')">
+          <n-button type="primary" @click="doExport">{{ t('export_backup') }}</n-button>
+        </n-form-item>
+
+        <!-- 导入区域 -->
+        <n-form-item :label="t('import_backup')">
+          <n-space align="center">
+            <n-button @click="doImport">{{ t('import_backup') }}</n-button>
+            <span v-if="importStatus" class="import-status" :class="importStatus.type">
+              {{ importStatus.text }}
+            </span>
+          </n-space>
+        </n-form-item>
+
+        <!-- 导入密码输入（仅在需要时显示） -->
+        <n-modal v-model:show="showPasswordModal" preset="dialog" :title="t('backup_import_need_pwd')">
+          <n-form-item :label="t('backup_password_label')">
+            <n-input v-model:value="importPassword" type="password" show-password-on="click" style="width:200px" />
+          </n-form-item>
+          <template #action>
+            <n-button @click="showPasswordModal = false">{{ t('cancel') }}</n-button>
+            <n-button type="primary" @click="doImportWithPassword">{{ t('confirm') }}</n-button>
+          </template>
+        </n-modal>
       </n-form>
     </div>
 
@@ -49,18 +101,28 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
-import { save as dialogSave, open as dialogOpen } from '@tauri-apps/plugin-dialog'
-import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs'
+import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
+import { readFile } from '@tauri-apps/plugin-fs'
 import { useAppStore } from '../stores/app'
 import { useMessage } from 'naive-ui'
 import { i18n } from '../i18n'
+import { FolderOutline as folderOutlineIcon } from '@vicons/ionicons5'
 
 const { t } = useI18n()
 const store = useAppStore()
 const msg = useMessage()
 const emit = defineEmits<{ back: [] }>()
+
+const usePassword = ref(false)
 const backupPassword = ref('')
-const defaultDir = ref(store.config.default_config_dir || '')
+const defaultDir = ref(store.config.defaultConfigDir || '')
+const exportPath = ref(store.config.backupExportPath || '')
+
+// 导入状态
+const importStatus = ref<{ type: 'info' | 'warning' | 'success', text: string } | null>(null)
+const showPasswordModal = ref(false)
+const importPassword = ref('')
+const pendingBackupData = ref<number[] | null>(null)
 
 function setLang(lang: string) {
   store.config.language = lang
@@ -74,31 +136,134 @@ async function browseDefaultDir() {
   }
 }
 
-async function doExport() {
-  if (!backupPassword.value) { msg.error(t('backup_password_hint')); return }
-  const json = await invoke<string>('export_providers', { password: backupPassword.value })
-  const path = await dialogSave({ defaultPath: 'mmycs_backup.json', filters: [{ name: 'JSON', extensions: ['json'] }] })
-  if (!path) return
-  await writeTextFile(path, json)
-  msg.success(t('export_success'))
-}
-
-async function doImport() {
-  if (!backupPassword.value) { msg.error(t('backup_password_hint')); return }
-  const path = await dialogOpen({ filters: [{ name: 'JSON', extensions: ['json'] }] })
-  if (!path) return
-  const json = await readTextFile(path as string)
-  try {
-    const n = await invoke<number>('import_providers', { json, password: backupPassword.value })
-    await store.loadProviders()
-    msg.success(t('import_success', { n }))
-  } catch (e) {
-    msg.error(t('import_failed', { msg: String(e) }))
+async function browseExportPath() {
+  const selected = await dialogOpen({ directory: true, title: t('backup_export_path') })
+  if (selected) {
+    exportPath.value = selected
+    msg.info(t('backup_path_remembered'))
   }
 }
 
+function clearExportPath() {
+  exportPath.value = ''
+}
+
+// 导出 - 导出到指定路径或默认 backups 目录
+async function doExport() {
+  try {
+    const password = usePassword.value && backupPassword.value ? backupPassword.value : ''
+    const customPath = exportPath.value || null
+    const result = await invoke<{ path: string, filename: string }>('export_backup_quick', { password, customPath })
+    msg.success(t('backup_export_quick_success', { path: result.path }))
+  } catch (e) {
+    msg.error('导出失败: ' + String(e))
+  }
+}
+
+async function doImport() {
+  importStatus.value = null
+
+  const path = await dialogOpen({
+    filters: [
+      { name: 'MMYCS Backup', extensions: ['mmycs'] },
+      { name: 'Legacy JSON', extensions: ['json'] }
+    ]
+  })
+  if (!path) return
+
+  const fileData = await readFile(path as string)
+
+  // 检测文件类型
+  const data: number[] = Array.from(fileData)
+
+  // 检查是否为新格式（MMYCS magic）
+  if (data.slice(0, 5).map(b => String.fromCharCode(b)).join('') === 'MMYCS') {
+    // 新格式：预检查
+    const info = await invoke<{ version: number, same_machine: boolean, has_password: boolean }>('check_backup_file', { data })
+
+    if (info.same_machine && !info.has_password) {
+      // 同机无密码：自动导入
+      importStatus.value = { type: 'info', text: t('backup_same_machine') }
+      try {
+        const result = await invoke<{ count: number, same_machine: boolean, need_password: boolean }>('import_backup', { data, password: '' })
+        await store.loadProviders()
+        importStatus.value = { type: 'success', text: t('backup_import_success', { n: result.count }) }
+        msg.success(t('backup_import_success', { n: result.count }))
+      } catch (e) {
+        msg.error(String(e))
+      }
+    } else if (info.has_password) {
+      // 有密码：需要输入
+      importStatus.value = { type: 'warning', text: t('backup_import_need_pwd') }
+      pendingBackupData.value = data
+      showPasswordModal.value = true
+    } else {
+      // 跨机器无密码：无法导入
+      importStatus.value = { type: 'warning', text: t('backup_import_no_pwd_cross') }
+      msg.warning(t('backup_import_no_pwd_cross'))
+    }
+  } else {
+    // 旧格式 JSON：需要密码
+    try {
+      const json = new TextDecoder().decode(fileData)
+      const bundle = JSON.parse(json)
+      if (bundle.version === 1 && bundle.providers) {
+        // 旧格式：提示输入密码
+        importStatus.value = { type: 'warning', text: '旧格式备份，需要密码' }
+        pendingBackupData.value = data
+        showPasswordModal.value = true
+      } else {
+        msg.error('无法识别的备份文件格式')
+      }
+    } catch {
+      msg.error('无法识别的备份文件格式')
+    }
+  }
+}
+
+async function doImportWithPassword() {
+  if (!importPassword.value) {
+    msg.warning(t('backup_password_hint'))
+    return
+  }
+
+  showPasswordModal.value = false
+
+  if (!pendingBackupData.value) return
+
+  const data = pendingBackupData.value
+
+  // 检查格式
+  if (data.slice(0, 5).map(b => String.fromCharCode(b)).join('') === 'MMYCS') {
+    // 新格式
+    try {
+      const result = await invoke<{ count: number, same_machine: boolean, need_password: boolean }>('import_backup', { data, password: importPassword.value })
+      await store.loadProviders()
+      importStatus.value = { type: 'success', text: t('backup_import_success', { n: result.count }) }
+      msg.success(t('backup_import_success', { n: result.count }))
+    } catch (e) {
+      msg.error(String(e))
+    }
+  } else {
+    // 旧格式 JSON
+    try {
+      const json = new TextDecoder().decode(new Uint8Array(data))
+      const count = await invoke<number>('import_providers_legacy', { json, password: importPassword.value })
+      await store.loadProviders()
+      importStatus.value = { type: 'success', text: t('backup_import_success', { n: count }) }
+      msg.success(t('backup_import_success', { n: count }))
+    } catch (e) {
+      msg.error(String(e))
+    }
+  }
+
+  pendingBackupData.value = null
+  importPassword.value = ''
+}
+
 async function save() {
-  store.config.default_config_dir = defaultDir.value || undefined
+  store.config.defaultConfigDir = defaultDir.value || undefined
+  store.config.backupExportPath = exportPath.value || undefined
   await store.saveConfig(store.config)
   msg.success(t('save_success'))
   emit('back')
@@ -133,4 +298,13 @@ body.dark .page-header { background: #242424; border-bottom-color: #333; }
   flex-shrink: 0;
 }
 body.dark .page-footer { background: #242424; border-top-color: #333; }
+.hint-text { color: #666; font-size: 12px; margin-bottom: 8px; }
+body.dark .hint-text { color: #999; }
+.import-status { font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+.import-status.info { background: #e8f4ff; color: #2080f0; }
+.import-status.warning { background: #fff7e6; color: #f0a020; }
+.import-status.success { background: #e8f5e9; color: #18a058; }
+body.dark .import-status.info { background: #2a3a5a; color: #70c0e8; }
+body.dark .import-status.warning { background: #3a3520; color: #f0a020; }
+body.dark .import-status.success { background: #2a3a30; color: #18a058; }
 </style>

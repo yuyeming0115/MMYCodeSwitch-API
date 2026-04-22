@@ -63,6 +63,15 @@ body.dark .titlebar {
   background: #242424;
   border-bottom-color: #333;
 }
+.titlebar-left {
+  display: flex;
+  align-items: center;
+}
+.titlebar-icon {
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+}
 .titlebar-title {
   font-size: 13px;
   font-weight: 600;

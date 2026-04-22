@@ -26,8 +26,9 @@ export interface Instance {
 export interface AppConfig {
   language: string
   instances: Instance[]
-  default_config_dir?: string
-  active_projects: ActiveProject[]
+  defaultConfigDir?: string
+  activeProjects: ActiveProject[]
+  backupExportPath?: string
 }
 
 export interface ActiveProject {
@@ -52,7 +53,7 @@ export interface SessionArchive {
 
 export const useAppStore = defineStore('app', () => {
   const providers = ref<Provider[]>([])
-  const config = ref<AppConfig>({ language: 'zh', instances: [], active_projects: [] })
+  const config = ref<AppConfig>({ language: 'zh', instances: [], activeProjects: [] })
   const activeInstanceId = ref('default')
   const activeProjects = ref<ActiveProject[]>([])
 

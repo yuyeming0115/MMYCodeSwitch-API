@@ -227,30 +227,265 @@ fn save_provider_icon(provider_id: String, data_base64: String, ext: String) -> 
     Ok(path.to_string_lossy().to_string())
 }
 
-// ── 导出备份 ──────────────────────────────────────────────────────────────────
-#[tauri::command]
-fn export_providers(password: String) -> Result<String, String> {
-    let providers = config::load_providers().map_err(|e| e.to_string())?;
-    let machine_key = config::get_or_create_key().map_err(|e| e.to_string())?;
-    // 用备份密码派生一个 32 字节 key（简单 SHA-256 stretch）
-    let backup_key = derive_key_from_password(&password);
-    let mut exported: Vec<serde_json::Value> = vec![];
-    for p in &providers {
-        let mut v = serde_json::to_value(p).map_err(|e| e.to_string())?;
-        // 用备份密码重新加密 api_key
-        if let Some(enc) = p.api_key_encrypted.as_deref() {
-            let plain = crypto::decrypt(enc, &machine_key).map_err(|e| e.to_string())?;
-            let re_enc = crypto::encrypt(&plain, &backup_key).map_err(|e| e.to_string())?;
-            v["api_key_encrypted"] = serde_json::Value::String(re_enc);
-        }
-        exported.push(v);
+// ── 导出备份（新格式：二进制文件，默认无密码，可选密码保护）──────────────────────
+/// 文件格式：
+/// [5 bytes]  Magic: "MMYCS"
+/// [1 byte]   Version: 0x02
+/// [32 bytes] Machine key hash (SHA-256 of machine_key)
+/// [1 byte]   Flag: 0x00 = 无密码, 0x01 = 有密码
+/// [若有密码: 32 bytes password verify hash]
+/// [剩余]     AES-256-GCM 加密的 providers JSON
+
+const BACKUP_MAGIC: &[u8] = b"MMYCS";
+const BACKUP_VERSION: u8 = 0x02;
+const FLAG_NO_PASSWORD: u8 = 0x00;
+const FLAG_HAS_PASSWORD: u8 = 0x01;
+
+/// 计算机器密钥的 SHA-256 hash（用于识别同机导入）
+fn machine_key_hash(machine_key: &str) -> [u8; 32] {
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
+    hasher.update(machine_key.as_bytes());
+    hasher.finalize().into()
+}
+
+/// 从密码派生密钥（用于跨机器加密）
+fn derive_key_from_password(password: &str) -> String {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use sha2::{Sha256, Digest};
+    // 简单的 PBKDF 替代：多次 SHA-256
+    let mut hash = password.as_bytes().to_vec();
+    for _ in 0..10000 {
+        let mut hasher = Sha256::new();
+        hasher.update(&hash);
+        hash = hasher.finalize().to_vec();
     }
-    let bundle = serde_json::json!({ "version": 1, "providers": exported });
-    Ok(serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())?)
+    STANDARD.encode(&hash[..32])
 }
 
 #[tauri::command]
-fn import_providers(json: String, password: String) -> Result<usize, String> {
+fn export_backup(password: String) -> Result<Vec<u8>, String> {
+    let providers = config::load_providers().map_err(|e| e.to_string())?;
+    let machine_key = config::get_or_create_key().map_err(|e| e.to_string())?;
+
+    // 构建导出数据
+    let mut exported: Vec<serde_json::Value> = vec![];
+    for p in &providers {
+        let v = serde_json::to_value(p).map_err(|e| e.to_string())?;
+        // API key 已经用 machine_key 加密，直接保留
+        exported.push(v);
+    }
+    let providers_json = serde_json::to_string(&exported).map_err(|e| e.to_string())?;
+
+    // 根据是否有密码选择加密方式
+    let (flag, encrypted_data, pwd_for_hash) = if password.is_empty() {
+        // 无密码：用机器密钥加密（同机可直接导入）
+        (FLAG_NO_PASSWORD, crypto::encrypt(&providers_json, &machine_key).map_err(|e| e.to_string())?, None)
+    } else {
+        // 有密码：用密码派生密钥加密
+        let backup_key = derive_key_from_password(&password);
+        (FLAG_HAS_PASSWORD, crypto::encrypt(&providers_json, &backup_key).map_err(|e| e.to_string())?, Some(password))
+    };
+
+    // 构建二进制文件
+    let mut output: Vec<u8> = vec![];
+
+    // 1. Magic
+    output.extend_from_slice(BACKUP_MAGIC);
+
+    // 2. Version
+    output.push(BACKUP_VERSION);
+
+    // 3. Machine key hash
+    output.extend_from_slice(&machine_key_hash(&machine_key));
+
+    // 4. Flag
+    output.push(flag);
+
+    // 5. 若有密码，写入密码验证 hash
+    if flag == FLAG_HAS_PASSWORD {
+        let pwd_hash = derive_key_from_password(&pwd_for_hash.unwrap());
+        output.extend_from_slice(&machine_key_hash(&pwd_hash));
+    }
+
+    // 6. 加密数据（base64 编码）
+    output.extend_from_slice(encrypted_data.as_bytes());
+
+    Ok(output)
+}
+
+/// 导出结果（包含文件路径）
+#[derive(Serialize)]
+pub struct ExportResult {
+    pub path: String,
+    pub filename: String,
+}
+
+/// 快速导出 - 导出到指定路径或默认 backups 目录，文件名带日期后缀
+#[tauri::command]
+fn export_backup_quick(password: String, custom_path: Option<String>) -> Result<ExportResult, String> {
+    let data = export_backup(password)?;
+
+    // 确定导出目录
+    let backups_dir = if let Some(path) = custom_path {
+        if path.is_empty() {
+            config::mmycs_dir().join("backups")
+        } else {
+            std::path::PathBuf::from(&path)
+        }
+    } else {
+        config::mmycs_dir().join("backups")
+    };
+
+    std::fs::create_dir_all(&backups_dir).map_err(|e| e.to_string())?;
+
+    // 生成带日期后缀的文件名
+    let now = chrono::Local::now();
+    let filename = format!("mmycs_backup_{}.mmycs", now.format("%Y%m%d_%H%M%S"));
+    let filepath = backups_dir.join(&filename);
+
+    // 写入文件
+    std::fs::write(&filepath, &data).map_err(|e| e.to_string())?;
+
+    Ok(ExportResult {
+        path: filepath.to_string_lossy().to_string(),
+        filename,
+    })
+}
+
+/// 导入结果
+#[derive(Serialize)]
+pub struct ImportResult {
+    pub count: usize,
+    pub same_machine: bool,
+    pub need_password: bool,
+}
+
+/// 检测备份文件信息（导入前预检查）
+#[derive(Serialize)]
+pub struct BackupInfo {
+    pub version: u8,
+    pub same_machine: bool,
+    pub has_password: bool,
+}
+
+#[tauri::command]
+fn check_backup_file(data: Vec<u8>) -> Result<BackupInfo, String> {
+    if data.len() < 39 {
+        return Err("文件格式无效".to_string());
+    }
+
+    // 检查 Magic
+    if &data[0..5] != BACKUP_MAGIC {
+        return Err("不是 MMYCS 备份文件".to_string());
+    }
+
+    // 检查版本
+    let version = data[5];
+    if version != BACKUP_VERSION {
+        return Err(format!("不支持的版本: {}", version));
+    }
+
+    // 读取机器密钥 hash
+    let stored_hash: [u8; 32] = data[6..38].try_into().map_err(|_| "hash 读取失败")?;
+
+    // 检查是否同机
+    let machine_key = config::get_or_create_key().map_err(|e| e.to_string())?;
+    let current_hash = machine_key_hash(&machine_key);
+    let same_machine = stored_hash == current_hash;
+
+    // 检查是否有密码
+    let flag = data[38];
+    let has_password = flag == FLAG_HAS_PASSWORD;
+
+    Ok(BackupInfo {
+        version,
+        same_machine,
+        has_password,
+    })
+}
+
+#[tauri::command]
+fn import_backup(data: Vec<u8>, password: String) -> Result<ImportResult, String> {
+    if data.len() < 39 {
+        return Err("文件格式无效".to_string());
+    }
+
+    // 检查 Magic
+    if &data[0..5] != BACKUP_MAGIC {
+        return Err("不是 MMYCS 备份文件".to_string());
+    }
+
+    // 检查版本
+    let version = data[5];
+    if version != BACKUP_VERSION {
+        return Err(format!("不支持的版本: {}", version));
+    }
+
+    // 读取机器密钥 hash
+    let stored_hash: [u8; 32] = data[6..38].try_into().map_err(|_| "hash 读取失败")?;
+
+    // 检查是否同机
+    let machine_key = config::get_or_create_key().map_err(|e| e.to_string())?;
+    let current_hash = machine_key_hash(&machine_key);
+    let same_machine = stored_hash == current_hash;
+
+    // 读取 flag
+    let flag = data[38];
+    let has_password = flag == FLAG_HAS_PASSWORD;
+
+    // 计算加密数据起始位置
+    let data_start = if has_password { 39 + 32 } else { 39 };
+
+    if data.len() < data_start {
+        return Err("文件数据不完整".to_string());
+    }
+
+    // 提取加密数据
+    let encrypted_data = String::from_utf8_lossy(&data[data_start..]).to_string();
+
+    // 解密
+    let providers_json = if has_password {
+        // 有密码：需要用户提供密码
+        if password.is_empty() {
+            return Err("需要输入备份密码".to_string());
+        }
+        let backup_key = derive_key_from_password(&password);
+        crypto::decrypt(&encrypted_data, &backup_key)
+            .map_err(|_| "密码错误或文件损坏".to_string())?
+    } else {
+        // 无密码：根据是否同机选择解密方式
+        if same_machine {
+            // 同机：用机器密钥解密
+            crypto::decrypt(&encrypted_data, &machine_key)
+                .map_err(|e| format!("解密失败: {}", e))?
+        } else {
+            // 跨机器但无密码：无法导入
+            return Err("此备份文件未设置密码保护，仅能在原机器上导入。\n如需跨机器迁移，请在导出时设置密码。".to_string());
+        }
+    };
+
+    // 解析并导入 providers
+    let providers: Vec<Provider> = serde_json::from_str(&providers_json)
+        .map_err(|e| format!("解析失败: {}", e))?;
+
+    let mut count = 0usize;
+    for p in providers {
+        // 保存 provider（API key 已加密，直接保存）
+        config::save_provider(&p).map_err(|e| e.to_string())?;
+        count += 1;
+    }
+
+    Ok(ImportResult {
+        count,
+        same_machine,
+        need_password: has_password || (!same_machine && !has_password),
+    })
+}
+
+// ── 旧版兼容：保留原有 JSON 格式导入（向后兼容）──────────────────────────────
+#[tauri::command]
+fn import_providers_legacy(json: String, password: String) -> Result<usize, String> {
     let bundle: serde_json::Value = serde_json::from_str(&json).map_err(|e| e.to_string())?;
     let backup_key = derive_key_from_password(&password);
     let machine_key = config::get_or_create_key().map_err(|e| e.to_string())?;
@@ -266,22 +501,6 @@ fn import_providers(json: String, password: String) -> Result<usize, String> {
         count += 1;
     }
     Ok(count)
-}
-
-fn derive_key_from_password(password: &str) -> String {
-    use base64::{engine::general_purpose::STANDARD, Engine};
-    // 简单 PBKDF：SHA-256 x 10000 轮
-    let mut hash = password.as_bytes().to_vec();
-    for _ in 0..10000 {
-        let mut h = [0u8; 32];
-        // 用 aes-gcm 依赖中已有的 sha2 不可用，改用简单 xor-fold 替代
-        // 实际项目建议换成 argon2/pbkdf2
-        for (i, b) in hash.iter().enumerate() {
-            h[i % 32] ^= b;
-        }
-        hash = h.to_vec();
-    }
-    STANDARD.encode(&hash[..32])
 }
 
 // ── 连通性测试（智能适配不同协议） ────────────────────────────────────────
@@ -977,8 +1196,11 @@ pub fn run() {
             get_project_sessions,
             launch_terminal,
             parse_paste,
-            export_providers,
-            import_providers,
+            export_backup,
+            export_backup_quick,
+            import_backup,
+            check_backup_file,
+            import_providers_legacy,
             fetch_models,
             test_provider,
             detect_instances,

@@ -15,7 +15,8 @@
       "Bash(taskkill /F /PID 35660)",
       "Bash(cmd *)",
       "Bash(cargo build *)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(npx vue-tsc *)"
     ]
   }
 }

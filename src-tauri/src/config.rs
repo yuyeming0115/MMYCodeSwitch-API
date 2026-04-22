@@ -76,6 +76,9 @@ pub struct AppConfig {
     #[serde(default)]
     #[serde(rename = "activeProjects")]
     pub active_projects: Vec<ActiveProject>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "backupExportPath")]
+    pub backup_export_path: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -92,6 +95,7 @@ impl Default for AppConfig {
             }],
             default_config_dir: None,
             active_projects: vec![],
+            backup_export_path: None,
         }
     }
 }
