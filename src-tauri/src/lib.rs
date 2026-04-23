@@ -1781,6 +1781,7 @@ fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
             match id {
                 "__show__" => {
                     if let Some(win) = app.get_webview_window("main") {
+                        let _ = win.unminimize();
                         let _ = win.show();
                         let _ = win.set_focus();
                     }
@@ -1825,6 +1826,7 @@ fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
                 let app = tray.app_handle();
                 if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.unminimize();
                     let _ = win.show();
                     let _ = win.set_focus();
                 }

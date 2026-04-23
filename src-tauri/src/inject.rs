@@ -98,11 +98,15 @@ fn log_switch(config_dir: &str, provider_name: &str) -> Result<()> {
 /// 注入 API 配置到项目专属配置目录
 /// 返回项目专属目录路径
 pub fn inject_to_project_dir(project_path: &str, provider: &Provider, api_key_plain: Option<&str>) -> Result<String> {
-    // 1. 确保项目专属目录存在
-    let config_dir = crate::config::ensure_project_config_dir(project_path)?;
-    let settings_path = config_dir.join("settings.json");
+    // 1. 确保项目专属目录存在（用于归档历史记录）
+    let _mmycs_config_dir = crate::config::ensure_project_config_dir(project_path)?;
 
-    // 2. 备份现有 settings.json（如果有）
+    // 2. ★ 关键：写入到项目目录下的 .claude/settings.json（Claude Code CLI 会读取这个）
+    let project_claude_dir = Path::new(project_path).join(".claude");
+    std::fs::create_dir_all(&project_claude_dir)?;
+    let settings_path = project_claude_dir.join("settings.json");
+
+    // 3. 备份现有 settings.json（如果有）
     if settings_path.exists() {
         backup(&settings_path)?;
     }
@@ -167,7 +171,8 @@ pub fn inject_to_project_dir(project_path: &str, provider: &Provider, api_key_pl
     crate::config::archive_session(project_path, provider, config_snapshot)?;
 
     // 7. 记录切换日志
-    log_switch(&config_dir.to_string_lossy(), &provider.name)?;
+    log_switch(&project_claude_dir.to_string_lossy(), &provider.name)?;
 
-    Ok(config_dir.to_string_lossy().to_string())
+    // 返回项目目录下的 .claude 路径（这才是实际生效的配置目录）
+    Ok(project_claude_dir.to_string_lossy().to_string())
 }
