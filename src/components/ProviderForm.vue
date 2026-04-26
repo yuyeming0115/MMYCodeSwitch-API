@@ -557,7 +557,13 @@ async function submit() {
 }
 body.dark .page-header { background: #242424; border-bottom-color: #333; }
 .page-title { font-size: 18px; font-weight: 700; }
-.page-content { flex: 1; overflow-y: auto; padding: 16px; }
+.page-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  padding-bottom: 80px;  /* 为底部按钮预留空间 */
+  min-height: 0;  /* 确保 flex 子元素可正确收缩 */
+}
 .page-footer {
   display: flex;
   align-items: center;
@@ -566,6 +572,9 @@ body.dark .page-header { background: #242424; border-bottom-color: #333; }
   border-top: 1px solid #eee;
   background: #fafafa;
   flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
 }
 body.dark .page-footer { background: #242424; border-top-color: #333; }
 

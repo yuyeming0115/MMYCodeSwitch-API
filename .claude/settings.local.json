@@ -16,7 +16,11 @@
       "Bash(cmd *)",
       "Bash(cargo build *)",
       "WebSearch",
-      "Bash(npx vue-tsc *)"
+      "Bash(npx vue-tsc *)",
+      "WebFetch(domain:platform.deepseek.com)",
+      "WebFetch(domain:open.bigmodel.cn)",
+      "WebFetch(domain:platform.moonshot.cn)",
+      "WebFetch(domain:platform.kimi.com)"
     ]
   }
 }

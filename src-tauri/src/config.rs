@@ -300,6 +300,7 @@ pub struct ProviderTemplate {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "iconFallback")]
     pub icon_fallback: Option<String>,
+    #[serde(rename = "baseUrls")]
     pub base_urls: Vec<ProviderTemplateUrl>,
     pub models: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
