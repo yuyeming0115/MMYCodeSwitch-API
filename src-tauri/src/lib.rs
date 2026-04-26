@@ -1149,10 +1149,54 @@ fn get_provider_templates() -> Result<Vec<ProviderTemplate>, String> {
     let builtin = get_builtin_provider_templates();
     // 2. 获取用户自定义模板
     let custom = config::load_provider_templates().map_err(|e| e.to_string())?;
-    // 3. 合并（内置在前，自定义在后）
+    // 3. 合并缓存模型（如果有）
     let mut all = builtin;
     all.extend(custom);
+
+    // 尝试加载缓存的模型列表
+    for tpl in &mut all {
+        let cached = config::load_cached_models(&tpl.id).unwrap_or_default();
+        if !cached.is_empty() {
+            // 合并缓存模型和内置模型（缓存优先）
+            let mut merged = cached;
+            for m in &tpl.models {
+                if !merged.contains(m) {
+                    merged.push(m.clone());
+                }
+            }
+            tpl.models = merged;
+        }
+    }
+
     Ok(all)
+}
+
+/// 刷新模板模型列表（调用供应商 API 实时获取）
+#[derive(Serialize)]
+pub struct RefreshModelsResult {
+    pub models: Vec<String>,
+    pub cached_at: String,
+}
+
+#[tauri::command]
+async fn refresh_template_models(template_id: String, base_url: String, api_key: String) -> Result<RefreshModelsResult, String> {
+    // 使用已有的 fetch_models 逻辑获取模型列表
+    let result = fetch_models(base_url, api_key).await?;
+
+    // 保存到缓存
+    config::save_cached_models(&template_id, &result.models).map_err(|e| e.to_string())?;
+    let cached_at = chrono::Utc::now().to_rfc3339();
+
+    Ok(RefreshModelsResult {
+        models: result.models,
+        cached_at,
+    })
+}
+
+/// 获取模板缓存的模型列表
+#[tauri::command]
+fn get_cached_models(template_id: String) -> Result<Vec<String>, String> {
+    config::load_cached_models(&template_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1206,7 +1250,7 @@ pub struct FullBackupResult {
 }
 
 #[tauri::command]
-fn export_full_backup(password: String, include_templates: bool, include_skills: bool) -> Result<FullBackupResult, String> {
+fn export_full_backup(password: String, include_templates: bool, include_skills: bool, custom_path: Option<String>) -> Result<FullBackupResult, String> {
     // 1. 导出 providers（加密）
     let providers = config::load_providers().map_err(|e| e.to_string())?;
     let machine_key = config::get_or_create_key().map_err(|e| e.to_string())?;
@@ -1277,8 +1321,16 @@ fn export_full_backup(password: String, include_templates: bool, include_skills:
     }
     output.extend_from_slice(backup_encrypted.as_bytes());
 
-    // 8. 写入文件
-    let backups_dir = config::mmycs_dir().join("backups");
+    // 8. 写入文件 - 支持自定义路径
+    let backups_dir = if let Some(path) = custom_path {
+        if path.is_empty() {
+            config::mmycs_dir().join("backups")
+        } else {
+            std::path::PathBuf::from(&path)
+        }
+    } else {
+        config::mmycs_dir().join("backups")
+    };
     std::fs::create_dir_all(&backups_dir).map_err(|e| e.to_string())?;
     let now = chrono::Local::now();
     let filename = format!("mmycs_full_backup_{}.mmycs", now.format("%Y%m%d_%H%M%S"));
@@ -2066,6 +2118,8 @@ pub fn run() {
             get_provider_templates,
             save_provider_template,
             delete_provider_template,
+            refresh_template_models,
+            get_cached_models,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

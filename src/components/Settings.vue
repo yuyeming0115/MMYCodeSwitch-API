@@ -155,12 +155,18 @@ async function browseExportPath() {
   const selected = await dialogOpen({ directory: true, title: t('backup_export_path') })
   if (selected) {
     exportPath.value = selected
+    // 立即保存路径到 config（自动记忆）
+    store.config.backupExportPath = selected
+    await store.saveConfig(store.config)
     msg.info(t('backup_path_remembered'))
   }
 }
 
 function clearExportPath() {
   exportPath.value = ''
+  // 清除保存的路径
+  store.config.backupExportPath = undefined
+  store.saveConfig(store.config)
 }
 
 // 完整导出
@@ -169,8 +175,9 @@ async function doExport() {
     const password = usePassword.value && backupPassword.value ? backupPassword.value : ''
     const result = await invoke<{ path: string, filename: string, included: string[] }>('export_full_backup', {
       password,
-      includeTemplates,
-      includeSkills
+      includeTemplates: includeTemplates.value,
+      includeSkills: includeSkills.value,
+      customPath: exportPath.value || null
     })
     msg.success(t('backup_export_quick_success', { path: result.path }))
   } catch (e) {
@@ -283,7 +290,22 @@ async function save() {
 }
 body.dark .page-header { background: #242424; border-bottom-color: #333; }
 .page-title { font-size: 18px; font-weight: 700; }
-.page-content { flex: 1; overflow-y: auto; padding: 16px; }
+.page-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  padding-bottom: 80px;  /* 为底部按钮预留空间 */
+  /* 继承全局滚动条样式 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128,128,128,0.2) transparent;
+}
+.page-content::-webkit-scrollbar { width: 6px; }
+.page-content::-webkit-scrollbar-track { background: transparent; }
+.page-content::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.2); border-radius: 10px; }
+.page-content::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.4); }
+body.dark .page-content { scrollbar-color: rgba(200,200,200,0.12) transparent; }
+body.dark .page-content::-webkit-scrollbar-thumb { background: rgba(200,200,200,0.12); }
+body.dark .page-content::-webkit-scrollbar-thumb:hover { background: rgba(200,200,200,0.25); }
 .page-footer {
   display: flex;
   align-items: center;
@@ -292,6 +314,9 @@ body.dark .page-header { background: #242424; border-bottom-color: #333; }
   border-top: 1px solid #eee;
   background: #fafafa;
   flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
 }
 body.dark .page-footer { background: #242424; border-top-color: #333; }
 .hint-text { color: #666; font-size: 12px; margin-bottom: 8px; }

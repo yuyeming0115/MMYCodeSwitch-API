@@ -356,3 +356,52 @@ pub fn delete_provider_template(id: &str) -> Result<()> {
     if path.exists() { std::fs::remove_file(path)?; }
     Ok(())
 }
+
+// ── 模型缓存（用于实时刷新后保存）──────────────────────────────────────────────
+
+/// 获取模型缓存目录
+fn models_cache_dir() -> PathBuf {
+    mmycs_dir().join("models_cache")
+}
+
+/// 保存模板模型缓存
+pub fn save_cached_models(template_id: &str, models: &[String]) -> Result<()> {
+    let dir = models_cache_dir();
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(format!("{}.json", template_id));
+    let cache = serde_json::json!({
+        "models": models,
+        "updated_at": chrono::Utc::now().to_rfc3339(),
+    });
+    std::fs::write(path, serde_json::to_string_pretty(&cache)?)?;
+    Ok(())
+}
+
+/// 加载模板模型缓存
+pub fn load_cached_models(template_id: &str) -> Result<Vec<String>> {
+    let path = models_cache_dir().join(format!("{}.json", template_id));
+    if !path.exists() {
+        return Ok(vec![]);
+    }
+    let content = std::fs::read_to_string(&path)?;
+    let cache: serde_json::Value = serde_json::from_str(&content)?;
+    if let Some(arr) = cache.get("models").and_then(|m| m.as_array()) {
+        Ok(arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+    } else {
+        Ok(vec![])
+    }
+}
+
+/// 获取缓存更新时间
+pub fn get_cache_updated_at(template_id: &str) -> Option<String> {
+    let path = models_cache_dir().join(format!("{}.json", template_id));
+    if !path.exists() {
+        return None;
+    }
+    if let Ok(content) = std::fs::read_to_string(&path) {
+        if let Ok(cache) = serde_json::from_str::<serde_json::Value>(&content) {
+            return cache.get("updated_at").and_then(|t| t.as_str()).map(String::from);
+        }
+    }
+    None
+}

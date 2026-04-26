@@ -167,4 +167,17 @@ export default {
   full_backup_import: 'Import Full Backup',
   full_backup_import_success: 'Imported: {providers} providers, {templates} templates, {skills} skills',
   full_backup_select_file: 'Select Backup File',
+  // Model refresh
+  refresh_models: 'Refresh Models',
+  refreshing_models: 'Refreshing...',
+  models_refreshed: 'Fetched {n} models',
+  refresh_failed: 'Refresh failed: {msg}',
+  refresh_hint: 'Enter API Key and click refresh to get latest models',
+  models_from_cache: 'Models (from cache)',
+  models_updated_at: 'Updated at {time}',
+  // Save as template
+  save_as_template: 'Save as Template',
+  save_as_template_hint: 'Save current provider config as a custom template for quick creation',
+  save_as_template_desc_placeholder: 'From provider "{name}"',
+  base_url_required: 'Base URL required',
 }

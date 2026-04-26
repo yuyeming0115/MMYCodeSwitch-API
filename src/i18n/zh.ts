@@ -167,4 +167,17 @@ export default {
   full_backup_import: '导入完整备份',
   full_backup_import_success: '导入成功：{providers} 个供应商，{templates} 个模板，{skills} 个 Skill',
   full_backup_select_file: '选择备份文件',
+  // 模型刷新
+  refresh_models: '刷新模型列表',
+  refreshing_models: '正在刷新...',
+  models_refreshed: '已获取 {n} 个模型',
+  refresh_failed: '刷新失败：{msg}',
+  refresh_hint: '输入 API Key 后点击刷新，获取官网最新模型',
+  models_from_cache: '模型列表（来自缓存）',
+  models_updated_at: '更新于 {time}',
+  // 从供应商保存为模板
+  save_as_template: '保存为模板',
+  save_as_template_hint: '将当前供应商配置保存为自定义模板，方便后续快速创建类似供应商',
+  save_as_template_desc_placeholder: '来自供应商「{name}」',
+  base_url_required: '请填写 Base URL',
 }

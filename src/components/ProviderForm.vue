@@ -104,13 +104,34 @@
             <n-input v-model:value="form.base_url" placeholder="https://" />
           </n-form-item>
 
+          <!-- 默认模型 + 刷新按钮 -->
           <n-form-item :label="t('default_model')">
-            <n-select
-              v-model:value="form.models_default"
-              :options="modelOptions"
-              :placeholder="t('select_default_model')"
-              filterable
-            />
+            <div style="display:flex;align-items:center;gap:8px;width:100%">
+              <n-select
+                v-model:value="form.models_default"
+                :options="modelOptions"
+                :placeholder="t('select_default_model')"
+                filterable
+                style="flex:1"
+              />
+              <!-- 刷新按钮（选择模板后显示） -->
+              <n-button
+                v-if="currentTemplate && form.api_key_plain"
+                type="primary"
+                size="small"
+                :loading="refreshingModels"
+                @click="refreshModels"
+              >
+                {{ refreshingModels ? t('refreshing_models') : t('refresh_models') }}
+              </n-button>
+            </div>
+            <!-- 刷新提示 -->
+            <div v-if="refreshedModels.length > 0" style="font-size:11px;color:#18a058;margin-top:4px">
+              {{ t('models_refreshed', { n: refreshedModels.length }) }}
+            </div>
+            <div v-else-if="currentTemplate && !form.api_key_plain" style="font-size:11px;color:#999;margin-top:4px">
+              {{ t('refresh_hint') }}
+            </div>
           </n-form-item>
 
           <!-- 模型列表 -->
@@ -167,6 +188,8 @@
 
     <footer class="page-footer">
       <n-button size="large" @click="emit('back')">{{ t('cancel') }}</n-button>
+      <!-- 编辑模式下显示"保存为模板"按钮 -->
+      <n-button v-if="isEdit" size="large" type="warning" @click="showSaveAsTemplateModal = true">{{ t('save_as_template') }}</n-button>
       <n-button type="primary" size="large" :loading="saving" @click="submit">{{ t('save') }}</n-button>
     </footer>
 
@@ -217,6 +240,31 @@
         </n-button>
       </template>
     </n-modal>
+
+    <!-- 从供应商保存为模板对话框 -->
+    <n-modal v-model:show="showSaveAsTemplateModal" preset="dialog" :title="t('save_as_template')" style="width:500px">
+      <p style="font-size:12px;color:#888;margin-bottom:12px">{{ t('save_as_template_hint') }}</p>
+      <n-form label-placement="left" label-width="80px">
+        <n-form-item :label="t('template_name')" required>
+          <n-input v-model:value="saveAsTemplateName" :placeholder="form.name" />
+        </n-form-item>
+        <n-form-item :label="t('base_url')">
+          <n-input :value="form.base_url" disabled />
+        </n-form-item>
+        <n-form-item :label="t('models')">
+          <div style="font-size:12px;color:#666">
+            {{ refreshedModels.length > 0 ? refreshedModels.join(', ') : (parsedModels.length > 0 ? parsedModels.join(', ') : form.models_default || '-') }}
+          </div>
+        </n-form-item>
+        <n-form-item :label="t('description')">
+          <n-input v-model:value="saveAsTemplateDesc" :placeholder="t('save_as_template_desc_placeholder', { name: form.name })" />
+        </n-form-item>
+      </n-form>
+      <template #action>
+        <n-button @click="showSaveAsTemplateModal = false">{{ t('cancel') }}</n-button>
+        <n-button type="primary" @click="saveAsTemplate">{{ t('save') }}</n-button>
+      </template>
+    </n-modal>
   </div>
 </template>
 
@@ -250,6 +298,11 @@ const selectedBaseUrlIndex = ref(0)
 /** 记录选中模板的内置图标路径（用于提交时自动关联 public/icons/*.svg） */
 const selectedBuiltinIcon = ref<string | null>(null)
 
+// 模型刷新状态
+const refreshingModels = ref(false)
+const refreshedModels = ref<string[]>([])
+const refreshError = ref<string | null>(null)
+
 // 添加自定义模板
 const showAddTemplateModal = ref(false)
 const addTemplateTab = ref<'paste' | 'manual'>('paste')
@@ -260,6 +313,11 @@ const newTemplateBaseUrl = ref('')
 const newTemplateIcon = ref('')
 const newTemplateModels = ref('')
 const newTemplateDesc = ref('')
+
+// 保存为模板（从现有供应商）
+const showSaveAsTemplateModal = ref(false)
+const saveAsTemplateName = ref('')
+const saveAsTemplateDesc = ref('')
 
 const form = ref({
   name: '',
@@ -297,9 +355,12 @@ const parsedModelCount = computed(() => parsedModels.value.length)
 
 const modelOptions = computed(() => {
   const tpl = currentTemplate.value
-  const source = parsedModels.value.length > 0
-    ? parsedModels.value
-    : (tpl?.models ?? [])
+  // 优先使用刷新后的模型列表
+  const source = refreshedModels.value.length > 0
+    ? refreshedModels.value
+    : (parsedModels.value.length > 0
+      ? parsedModels.value
+      : (tpl?.models ?? []))
   const additional = form.value.models_default ? [form.value.models_default] : []
   const all = [...new Set([...source, ...additional])]
   return all.map(m => ({ label: m, value: m }))
@@ -363,6 +424,10 @@ function selectTemplate(tpl: ProviderTemplate) {
   form.value.notes = t('template_from', { name: tpl.name })
   selectedBaseUrlIndex.value = 0
 
+  // ★ 清空刷新状态
+  refreshedModels.value = []
+  refreshError.value = null
+
   // ★ 预览内置图标（让用户能看到选择的模板图标）
   if (tpl.builtinIcon) {
     iconPreview.value = `/${tpl.builtinIcon}`
@@ -422,6 +487,37 @@ function clearCustomModels() {
 
 function openHelp(url: string) {
   invoke('tauri', { __tauriModule: 'shell', message: { cmd: 'open', payload: url } })
+}
+
+// ★ 刷新模型列表（调用供应商 API 实时获取）
+async function refreshModels() {
+  const tpl = currentTemplate.value
+  if (!tpl || !form.value.api_key_plain || !form.value.base_url) {
+    msg.warning(t('refresh_hint'))
+    return
+  }
+
+  refreshingModels.value = true
+  refreshError.value = null
+
+  try {
+    const result = await invoke<{ models: string[]; cached_at: string }>('refresh_template_models', {
+      templateId: tpl.id,
+      baseUrl: form.value.base_url,
+      apiKey: form.value.api_key_plain,
+    })
+    refreshedModels.value = result.models
+    // 自动选择第一个模型作为默认
+    if (result.models.length > 0 && !form.value.models_default) {
+      form.value.models_default = result.models[0]
+    }
+    msg.success(t('models_refreshed', { n: result.models.length }))
+  } catch (e) {
+    refreshError.value = String(e)
+    msg.error(t('refresh_failed', { msg: e }))
+  } finally {
+    refreshingModels.value = false
+  }
 }
 
 async function parseTemplateFromPaste() {
@@ -502,6 +598,53 @@ function confirmDeleteTemplate(id: string) {
   })
 }
 
+// 从当前供应商保存为模板
+async function saveAsTemplate() {
+  if (!saveAsTemplateName.value.trim()) {
+    msg.error(t('template_name_required'))
+    return
+  }
+  if (!form.value.base_url) {
+    msg.error(t('base_url_required'))
+    return
+  }
+
+  // 收集模型列表
+  const models = [
+    ...refreshedModels.value,
+    ...parsedModels.value,
+    form.value.models_default
+  ].filter(Boolean) as string[]
+  const uniqueModels = [...new Set(models)]
+
+  const input = {
+    id: null,
+    name: saveAsTemplateName.value.trim(),
+    icon: form.value.icon_fallback.slice(0, 2) || form.value.name.slice(0, 2),
+    color: '#666666',
+    description: saveAsTemplateDesc.value || `来自供应商「${form.value.name}」`,
+    builtinIcon: null,
+    iconFallback: form.value.icon_fallback || form.value.name.slice(0, 2),
+    baseUrls: [{ label: 'API', value: form.value.base_url }],
+    models: uniqueModels.length > 0 ? uniqueModels : [form.value.models_default || ''],
+    keyPlaceholder: null,
+    helpUrl: null,
+    badge: null,
+  }
+
+  try {
+    await store.saveProviderTemplate(input)
+    msg.success(t('template_save_success'))
+    showSaveAsTemplateModal.value = false
+    saveAsTemplateName.value = ''
+    saveAsTemplateDesc.value = ''
+    // 刷新模板列表
+    await store.loadProviderTemplates()
+  } catch (e) {
+    msg.error(t('save_failed') + ': ' + e)
+  }
+}
+
 async function submit() {
     if (!form.value.name) { msg.error(t('required')); return }
     saving.value = true
@@ -563,7 +706,17 @@ body.dark .page-header { background: #242424; border-bottom-color: #333; }
   padding: 16px;
   padding-bottom: 80px;  /* 为底部按钮预留空间 */
   min-height: 0;  /* 确保 flex 子元素可正确收缩 */
+  /* 继承全局滚动条样式 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128,128,128,0.2) transparent;
 }
+.page-content::-webkit-scrollbar { width: 6px; }
+.page-content::-webkit-scrollbar-track { background: transparent; }
+.page-content::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.2); border-radius: 10px; }
+.page-content::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.4); }
+body.dark .page-content { scrollbar-color: rgba(200,200,200,0.12) transparent; }
+body.dark .page-content::-webkit-scrollbar-thumb { background: rgba(200,200,200,0.12); }
+body.dark .page-content::-webkit-scrollbar-thumb:hover { background: rgba(200,200,200,0.25); }
 .page-footer {
   display: flex;
   align-items: center;
