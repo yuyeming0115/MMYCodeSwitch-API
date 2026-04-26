@@ -20,7 +20,10 @@
       "WebFetch(domain:platform.deepseek.com)",
       "WebFetch(domain:open.bigmodel.cn)",
       "WebFetch(domain:platform.moonshot.cn)",
-      "WebFetch(domain:platform.kimi.com)"
+      "WebFetch(domain:platform.kimi.com)",
+      "Bash(bash ./build.sh --portable 2>&1)",
+      "Bash(open /Users/zoe/Desktop/GitWork/MMYCodeSwitch-API/MMYCodeSwitch-API-Portable)",
+      "Bash(open /Users/zoe/Desktop/GitWork/MMYCodeSwitch-API/src-tauri/target/release/bundle/dmg)"
     ]
   }
 }
