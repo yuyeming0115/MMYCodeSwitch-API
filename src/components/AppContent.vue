@@ -27,6 +27,20 @@ const isDark = defineModel<boolean>('isDark', { default: false })
 const appWindow = getCurrentWindow()
 let resizeTimeout: ReturnType<typeof setTimeout> | null = null
 
+/// 全局窗口拖拽：按住空白区域即可拖动窗口（macOS 透明窗口 data-tauri-drag-region 不可靠时的兜底）
+async function startWindowDrag(e: MouseEvent) {
+  // 忽略点击在按钮/链接/输入框等交互元素上的情况
+  const target = e.target as HTMLElement
+  if (target.closest('button, a, input, select, textarea, [role="button"], .n-button, .n-input, .n-select, .n-checkbox, .n-switch, .provider-card, .project-card, .n-modal, .n-popover, .n-dropdown')) {
+    return
+  }
+  try {
+    await appWindow.startDragging()
+  } catch (_) {
+    /* startDragging 在部分平台可能不可用，静默失败 */
+  }
+}
+
 onMounted(async () => {
   await store.init()
   i18n.global.locale.value = store.config.language as 'zh' | 'en'
@@ -289,9 +303,9 @@ const statusInfo = computed(() => t('right_click_hint'))
 </script>
 
 <template>
-  <div class="app">
-    <!-- 自定义标题栏 -->
-    <div class="titlebar">
+  <div class="app" @mousedown="startWindowDrag">
+    <!-- 自定义标题栏（data-tauri-drag-region + startDragging 双重保障 macOS 拖拽） -->
+    <div class="titlebar" data-tauri-drag-region>
       <div class="titlebar-left">
         <img class="titlebar-icon" src="/icon.png" width="20" height="20" />
         <span class="titlebar-title">MMYCodeSwitch-API</span>
@@ -379,11 +393,13 @@ const statusInfo = computed(() => t('right_click_hint'))
   display: flex;
   flex-direction: column;
   height: 100vh;
+  overflow: hidden;
 }
 .page-main {
   display: grid;
   grid-template-rows: 1fr auto auto;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
 }
 .content {
   min-height: 0; /* 关键：允许 grid 子项收缩 */

@@ -43,7 +43,7 @@ body.dark,
 body.dark html { scrollbar-color: rgba(200,200,200,0.12) transparent; }
 body.dark ::-webkit-scrollbar-thumb { background: rgba(200,200,200,0.12); }
 body.dark ::-webkit-scrollbar-thumb:hover { background: rgba(200,200,200,0.25); }
-.app { display: flex; flex-direction: column; height: 100vh; }
+.app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
 /* 自定义标题栏 - 支持 Tauri 拖拽 */
 .titlebar {

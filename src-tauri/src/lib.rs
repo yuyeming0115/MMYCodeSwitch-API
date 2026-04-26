@@ -191,15 +191,33 @@ fn get_active_projects() -> Result<Vec<ActiveProject>, String> {
     Ok(cfg.active_projects)
 }
 
-// ── 移除已激活项目（仅从列表删除，不影响 settings.json） ────────────────
+// ── 移除已激活项目（从列表删除 + 清理 CLAUDE.md 标记块） ───────────────
 #[tauri::command]
 fn remove_active_project(id: String) -> Result<(), String> {
     let mut cfg = config::load_app_config().map_err(|e| e.to_string())?;
+    // 找到要移除的项目，获取 project_path 用于清理 CLAUDE.md
+    let project_path = cfg.active_projects.iter()
+        .find(|p| p.id == id)
+        .map(|p| p.project_path.clone());
+
     cfg.active_projects.retain(|p| p.id != id);
-    config::save_app_config(&cfg).map_err(|e| e.to_string())
+    config::save_app_config(&cfg).map_err(|e| e.to_string())?;
+
+    // 清理项目中的 CLAUDE.md 标记块（静默失败，不阻塞主流程）
+    if let Some(path) = project_path {
+        if let Err(e) = crate::inject::remove_claude_md_block(&path) {
+            eprintln!("[MMYCS] CLAUDE.md 清理警告（项目 {}）: {}", id, e);
+        }
+    }
+
+    Ok(())
 }
 
-// ── 获取项目专属配置目录路径 ────────────────────────────────────────────────
+// ── 独立清理项目的 CLAUDE.md 标记块（供前端手动调用） ──────────────────
+#[tauri::command]
+fn clean_claude_md_block(project_path: String) -> Result<bool, String> {
+    crate::inject::remove_claude_md_block(&project_path).map_err(|e| e.to_string())
+}
 #[tauri::command]
 fn get_project_config_dir(project_path: String) -> Result<String, String> {
     let norm_path = config::normalize_project_path(&project_path);
@@ -1550,14 +1568,19 @@ fn launch_terminal(workdir: String) -> Result<(), String> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        #[cfg(target_os = "macos")]
-        {
-            Command::new("open")
-                .args(["-a", "Terminal", "--args", "claude"])
-                .current_dir(&workdir)
-                .spawn()
-                .map_err(|e| format!("启动终端失败: {}", e))?;
-        }
+    #[cfg(target_os = "macos")]
+    {
+        // macOS：使用 AppleScript 让 Terminal 在工作目录中执行 claude 命令
+        // 注意：open -a Terminal --args claude 只能打开终端但不会执行命令
+        let script = format!(
+            "tell application \"Terminal\" to do script \"cd {} && claude\"",
+            workdir.replace('"', "\\\"")  // 转义路径中的引号
+        );
+        Command::new("osascript")
+            .args(["-e", &script])
+            .spawn()
+            .map_err(|e| format!("启动终端失败: {}", e))?;
+    }
         #[cfg(target_os = "linux")]
         {
             Command::new("x-terminal-emulator")
@@ -1956,6 +1979,7 @@ pub fn run() {
             get_window_state,
             hide_to_tray,
             check_active_claude_processes,
+            clean_claude_md_block,
             // Template management
             get_templates,
             save_template,

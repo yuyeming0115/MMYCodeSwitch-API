@@ -173,6 +173,147 @@ pub fn inject_to_project_dir(project_path: &str, provider: &Provider, api_key_pl
     // 7. 记录切换日志
     log_switch(&project_claude_dir.to_string_lossy(), &provider.name)?;
 
+    // 8. ★ 注入/更新项目 CLAUDE.md（标记块方式，不影响用户已有内容）
+    if let Err(e) = inject_claude_md(project_path, &provider.name, provider.models.as_ref()) {
+        // CLAUDE.md 注入失败不阻塞主流程（settings.json 已写入成功）
+        eprintln!("[MMYCS] CLAUDE.md 注入警告: {}", e);
+    }
+
     // 返回项目目录下的 .claude 路径（这才是实际生效的配置目录）
     Ok(project_claude_dir.to_string_lossy().to_string())
+}
+
+// ── CLAUDE.md 标记块注入/清理 ────────────────────────────────────────────
+
+/// CLAUDE.md 注入标记（用于定位和替换我们的内容）
+const CLAUDE_MD_MARKER_START: &str = "<!-- MMY-INJECT:START -->";
+const CLAUDE_MD_MARKER_END: &str = "<!-- MMY-INJECT:END -->";
+
+/// 构建模型身份提示词内容
+fn build_claude_md_content(provider_name: &str, models: Option<&HashMap<String, String>>) -> String {
+    let model_display = models
+        .and_then(|m| m.get("default"))
+        .filter(|s| !s.is_empty())
+        .map(|s| s.as_str())
+        .unwrap_or("未知模型");
+
+    format!(
+        r#"## 模型信息（由 MMYCodeSwitch-API 自动管理）
+
+> 当前使用的模型为 **{model}**，通过 **{provider}** 提供服务。
+> 此段内容由 `<!-- MMY-INJECT:START -->` 和 `<!-- MMY-INJECT:END -->` 包裹，
+> 切换供应商或解绑项目时会自动更新，请勿手动编辑此区域。
+"#,
+        model = model_display,
+        provider = provider_name,
+    )
+}
+
+/// 向项目目录注入/更新 CLAUDE.md（安全标记块方式）
+/// 
+/// 策略：
+/// - 文件不存在 → 新建文件并写入标记块
+/// - 文件存在但无标记块 → 在末尾追加标记块
+/// - 文件存在且有标记块 → 只替换标记块内部内容（保留用户原有内容）
+pub fn inject_claude_md(
+    project_path: &str,
+    provider_name: &str,
+    models: Option<&HashMap<String, String>>,
+) -> Result<()> {
+    let claude_md_path = Path::new(project_path).join("CLAUDE.md");
+    let new_content = build_claude_md_content(provider_name, models);
+    let marker_block = format!(
+        "{}\n{}\n{}",
+        CLAUDE_MD_MARKER_START,
+        new_content,
+        CLAUDE_MD_MARKER_END,
+    );
+
+    if !claude_md_path.exists() {
+        // 场景 A：文件不存在 → 直接新建
+        std::fs::write(&claude_md_path, marker_block)?;
+        return Ok(());
+    }
+
+    // 场景 B/C：文件已存在
+    let existing = std::fs::read_to_string(&claude_md_path)?;
+
+    if existing.contains(CLAUDE_MD_MARKER_START) && existing.contains(CLAUDE_MD_MARKER_END) {
+        // 场景 C：有旧标记块 → 替换标记块内部内容
+        let updated = replace_marker_block(&existing, &marker_block);
+        std::fs::write(&claude_md_path, updated)?;
+    } else {
+        // 场景 B：无标记块 → 追加到末尾
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&claude_md_path)?;
+
+        // 如果原文件末尾没有空行，先补一个换行
+        let needs_separator = !existing.ends_with('\n');
+        if needs_separator {
+            writeln!(f)?;
+        }
+        writeln!(f)?;
+        f.write_all(marker_block.as_bytes())?;
+        writeln!(f)?;
+    }
+
+    Ok(())
+}
+
+/// 仅移除 CLAUDE.md 中的 MMY 标记块（保留用户所有其他内容）
+/// 如果整个文件只有我们的标记块，则删除文件
+pub fn remove_claude_md_block(project_path: &str) -> Result<bool> {
+    let claude_md_path = Path::new(project_path).join("CLAUDE.md");
+
+    if !claude_md_path.exists() {
+        return Ok(false); // 文件不存在，无需操作
+    }
+
+    let content = std::fs::read_to_string(&claude_md_path)?;
+
+    if !content.contains(CLAUDE_MD_MARKER_START) || !content.contains(CLAUDE_MD_MARKER_END) {
+        return Ok(false); // 无标记块，不动文件
+    }
+
+    let cleaned = remove_marker_block_from_content(&content);
+
+    // 检查清除后是否只剩空白
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() {
+        // 整个文件都是我们的内容 → 删除文件
+        std::fs::remove_file(&claude_md_path)?;
+        return Ok(true);
+    }
+
+    // 保留剩余内容
+    std::fs::write(&claude_md_path, cleaned.trim_end())?;
+    Ok(true)
+}
+
+/// 替换标记块及其内容（保留标记前后的所有内容）
+fn replace_marker_block(content: &str, new_marker_block: &str) -> String {
+    let start_idx = content.find(CLAUDE_MD_MARKER_START).unwrap();
+    let end_idx = content.find(CLAUDE_MD_MARKER_END).unwrap() + CLAUDE_MD_MARKER_END.len();
+
+    format!(
+        "{}\n{}",
+        &content[..start_idx].trim_end(),
+        new_marker_block.trim(),
+    ) + &content[end_idx..]
+}
+
+/// 移除标记块及其内容（保留标记前后的所有内容）
+fn remove_marker_block_from_content(content: &str) -> String {
+    let start_idx = content.find(CLAUDE_MD_MARKER_START).unwrap();
+    let end_idx = content.find(CLAUDE_MD_MARKER_END).unwrap() + CLAUDE_MD_MARKER_END.len();
+
+    let before = content[..start_idx].trim_end().to_string();
+    let after = content[end_idx..].trim_start().to_string();
+
+    match (before.is_empty(), after.is_empty()) {
+        (true, true) => String::new(),
+        (true, false) => after,
+        (false, true) => before,
+        (false, false) => format!("{}\n\n{}", before, after),
+    }
 }

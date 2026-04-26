@@ -247,6 +247,8 @@ const pendingIconData = ref<{ base64: string; ext: string } | null>(null)
 
 const selectedTemplateId = ref<string | null>(null)
 const selectedBaseUrlIndex = ref(0)
+/** 记录选中模板的内置图标路径（用于提交时自动关联 public/icons/*.svg） */
+const selectedBuiltinIcon = ref<string | null>(null)
 
 // 添加自定义模板
 const showAddTemplateModal = ref(false)
@@ -345,11 +347,13 @@ function resetForm() {
   form.value = { name: '', icon_fallback: '', provider_type: 'api', api_key_plain: '', base_url: '', models_default: '', notes: '' }
   customModelInput.value = ''
   selectedTemplateId.value = null
+  selectedBuiltinIcon.value = null
   selectedBaseUrlIndex.value = 0
 }
 
 function selectTemplate(tpl: ProviderTemplate) {
   selectedTemplateId.value = tpl.id
+  selectedBuiltinIcon.value = tpl.builtinIcon || null  // ★ 记录内置图标路径
   form.value.name = tpl.name
   form.value.icon_fallback = tpl.iconFallback || tpl.name.slice(0, 2)
   form.value.base_url = tpl.baseUrls[0]?.value || ''
@@ -358,6 +362,11 @@ function selectTemplate(tpl: ProviderTemplate) {
   }
   form.value.notes = t('template_from', { name: tpl.name })
   selectedBaseUrlIndex.value = 0
+
+  // ★ 预览内置图标（让用户能看到选择的模板图标）
+  if (tpl.builtinIcon) {
+    iconPreview.value = `/${tpl.builtinIcon}`
+  }
 }
 
 function triggerIconUpload() { iconInput.value?.click() }
@@ -494,15 +503,22 @@ function confirmDeleteTemplate(id: string) {
 }
 
 async function submit() {
-  if (!form.value.name) { msg.error(t('required')); return }
-  saving.value = true
-  try {
-    const id = props.provider?.id ?? `provider_${Date.now()}`
-    let icon_path: string | null = props.provider?.icon_path ?? null
-    if (pendingIconData.value) {
-      icon_path = await invoke<string>('save_provider_icon', { providerId: id, dataBase64: pendingIconData.value.base64, ext: pendingIconData.value.ext })
-    }
-    const input = {
+    if (!form.value.name) { msg.error(t('required')); return }
+    saving.value = true
+    try {
+      const id = props.provider?.id ?? `provider_${Date.now()}`
+      let icon_path: string | null = props.provider?.icon_path ?? null
+
+      // 1. 优先使用用户上传的图标
+      if (pendingIconData.value) {
+        icon_path = await invoke<string>('save_provider_icon', { providerId: id, dataBase64: pendingIconData.value.base64, ext: pendingIconData.value.ext })
+      }
+      // 2. 如果用户没传图、原供应商也没有图 → 使用选中模板的内置 SVG 图标
+      else if (!icon_path && selectedBuiltinIcon.value) {
+        icon_path = selectedBuiltinIcon.value  // 如 "icons/dashscope.svg"，指向 public/ 目录
+      }
+
+      const input = {
       id: props.provider?.id ?? null,
       name: form.value.name.trim(),
       icon_fallback: form.value.icon_fallback || form.value.name.slice(0, 2),
