@@ -120,35 +120,54 @@ src-tauri/target/release/bundle/
 
 ### macOS 平台
 
+> ⚠️ **重要**：macOS 默认终端是 **zsh**，脚本中使用了 bash 语法，必须用 `bash` 显式运行：
+> ```bash
+> # ✅ 正确写法
+> bash ./build.sh --portable
+>
+> # ❌ 错误写法（会报 bad substitution 或 permission denied）
+> ./build.sh --portable
+> ```
+
 #### 方式一：一键打包脚本（推荐）
 
 **💻 Terminal 命令行：**
 ```bash
-# DMG 安装包（推荐）— 双击打开，拖拽到 Applications
-./build.sh
+# 便携版（推荐）— .app 应用包，直接双击运行，免安装
+bash ./build.sh --portable
 
-# 便携版 — .app 应用包，直接运行
-./build.sh --portable
+# DMG 安装包 — 双击打开，拖拽到 Applications
+bash ./build.sh
 
 # 清理后重新构建
-./build.sh --clean
+bash ./build.sh --portable --clean
+
+# Debug 模式（编译更快，体积更大）
+bash ./build.sh --portable --dev
 ```
 
 #### 打包类型对比（macOS）
 
 | 类型 | 命令 | 说明 | 文件大小 |
 |------|------|------|---------|
-| **DMG** ✨ | 默认 | 标准安装包，拖拽安装 | ~10-15 MB |
-| **App** | `--portable` | .app 应用包，直接运行 | ~8-12 MB |
+| **.app 便携版** ✨ | `--portable` | .app 应用包，双击即用，推荐分发拷贝 | ~8-12 MB |
+| **DMG 安装包** | 默认 | 标准安装包，拖拽安装到 Applications | ~10-15 MB |
+
+#### 常见问题（macOS）
+
+| 问题 | 原因 | 解决方法 |
+|------|------|----------|
+| `permission denied: ./build.sh` | 脚本没有执行权限 | 运行 `chmod +x build.sh`，或直接用 `bash ./build.sh` |
+| `bad substitution` | zsh 不兼容 `${VAR^^}` 语法 | 用 **`bash ./build.sh`** 替代 `./build.sh` |
+| 找不到 `.app` | 旧版脚本用了 `--no-bundle` | 已修复，新版会自动生成完整 `.app` bundle |
 
 **输出位置：**
 ```
-src-tauri/target/release/bundle/
-├── dmg/           # DMG 安装包
-│   └── MMYCodeSwitch-API_1.0.0_x64.dmg
-└── macos/         # .app 应用包
-    └── MMYCodeSwitch-API.app
+项目根目录/
+└── MMYCodeSwitch-API-Portable/          ← 便携版输出目录
+    └── MMYCodeSwitch-API.app           ← 双击即可运行 ✅
 ```
+拷贝整个 `MMYCodeSwitch-API-Portable` 文件夹到其他 Mac 即可使用。
 
 ---
 
@@ -182,6 +201,7 @@ npm run tauri build
 # Debug 构建
 npm run tauri build -- --debug
 ```
+> macOS 用户同样可直接使用此命令（无需 bash 前缀），因为这是 npm 调用。
 
 ### 打包产物总览
 
@@ -190,7 +210,7 @@ npm run tauri build -- --debug
 | Windows | `.exe` (NSIS) | 单文件安装包 | ~8-12 MB |
 | Windows | `.msi` | Windows Installer | ~10-15 MB |
 | macOS | `.dmg` | 标准安装包 | ~10-15 MB |
-| macOS | `.app` | 应用包（便携） | ~8-12 MB |
+| macOS | **`.app` 文件夹** | 便携版（推荐） | ~8-12 MB |
 | Linux | `.AppImage` | 单文件便携版 | ~10-15 MB |
 | Linux | `.deb` | Debian/Ubuntu 包 | ~8-12 MB |
 
