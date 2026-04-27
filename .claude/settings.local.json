@@ -23,7 +23,12 @@
       "WebFetch(domain:platform.kimi.com)",
       "Bash(bash ./build.sh --portable 2>&1)",
       "Bash(open /Users/zoe/Desktop/GitWork/MMYCodeSwitch-API/MMYCodeSwitch-API-Portable)",
-      "Bash(open /Users/zoe/Desktop/GitWork/MMYCodeSwitch-API/src-tauri/target/release/bundle/dmg)"
+      "Bash(open /Users/zoe/Desktop/GitWork/MMYCodeSwitch-API/src-tauri/target/release/bundle/dmg)",
+      "Bash(pnpm tauri *)",
+      "Bash(pkill -f \"vite\")",
+      "Bash(taskkill /F /PID 10480)",
+      "Bash(taskkill /F /PID 42720)",
+      "Bash(powershell.exe *)"
     ]
   }
 }

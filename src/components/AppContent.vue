@@ -32,7 +32,7 @@ function startWindowDrag(e: MouseEvent) {
   // 忽略点击在按钮/链接/输入框等交互元素上的情况
   const target = e.target as HTMLElement
   // 注意：ProviderGrid 卡片类名是 .card，ProjectList 卡片类名是 .proj-card
-  if (target.closest('button, a, input, select, textarea, [role="button"], .n-button, .n-input, .n-select, .n-checkbox, .n-switch, .card, .proj-card, .n-modal, .n-popover, .n-dropdown, .toolbar, .statusbar, .titlebar')) {
+  if (target.closest('button, a, input, select, textarea, [role="button"], .n-button, .n-input, .n-select, .n-checkbox, .n-switch, .card, .proj-card, .n-modal, .n-popover, .n-dropdown, .toolbar, .statusbar, .titlebar, .project-section-toggle')) {
     return
   }
   // 同步调用，避免阻塞 UI
@@ -82,6 +82,7 @@ watch(isDark, async (val) => {
 const activeInstance = computed(() => store.activeInstance())
 const activeProviderId = computed(() => activeInstance.value?.active_provider_id)
 const injecting = ref(false)  // 注入进行中，防止重复点击
+const projectListCollapsed = ref(false)  // 项目列表折叠状态
 
 async function toggleMax() {
   if (await appWindow.isMaximized()) {
@@ -329,8 +330,15 @@ const statusInfo = computed(() => t('right_click_hint'))
           @add="openAdd"
         />
 
+        <!-- 已打开项目折叠控制 -->
+        <div class="project-section-toggle" @click="projectListCollapsed = !projectListCollapsed">
+          <span class="toggle-icon">{{ projectListCollapsed ? '▼' : '▲' }}</span>
+          <span class="toggle-title">📂 {{ t('active_projects') }} ({{ store.activeProjects.length }})</span>
+        </div>
+
         <!-- 已打开项目列表 -->
         <ProjectList
+          v-show="!projectListCollapsed"
           :projects="store.activeProjects"
           :providers="store.providers"
           @removed="handleRemoveProject"
@@ -418,6 +426,36 @@ const statusInfo = computed(() => t('right_click_hint'))
 .content::-webkit-scrollbar-thumb:hover {
   background: rgba(128,128,128,0.45);
 }
+
+/* 项目列表折叠控制 */
+.project-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  margin-top: 12px;
+  border-top: 1px solid #e8e8e8;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.project-section-toggle:hover {
+  background: rgba(128,128,128,0.05);
+}
+.toggle-icon {
+  font-size: 12px;
+  color: #999;
+  width: 20px;
+  text-align: center;
+}
+.toggle-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+}
+body.dark .project-section-toggle { border-top-color: #333; }
+body.dark .toggle-title { color: #aaa; }
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;

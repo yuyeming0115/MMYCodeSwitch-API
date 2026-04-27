@@ -1,16 +1,6 @@
 <template>
   <div class="project-list-section">
-    <div class="section-header">
-      <div class="section-title">
-        <span class="title-icon">📂</span>
-        {{ t('active_projects') }} ({{ projects.length }})
-      </div>
-      <button v-if="projects.length > 0" class="collapse-btn" @click="collapsed = !collapsed">
-        {{ collapsed ? '▼' : '▲' }}
-      </button>
-    </div>
-
-    <div v-if="!collapsed" class="project-cards">
+    <div class="project-cards">
       <!-- 空状态 -->
       <div v-if="projects.length === 0" class="empty-state">
         <span class="empty-icon">🎯</span>
@@ -58,7 +48,6 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDialog, useMessage } from 'naive-ui'
 import type { ActiveProject, Provider } from '../stores/app'
@@ -75,8 +64,6 @@ const emit = defineEmits<{
   removed: [id: string]
   launch: [projectPath: string]
 }>()
-
-const collapsed = ref(false)
 
 /// 获取供应商的 icon_path（有则返回路径，无则返回 null）
 function providerIconUrl(proj: ActiveProject): string | null {
@@ -156,41 +143,11 @@ function handleLaunch(proj: ActiveProject) {
 
 <style scoped>
 .project-list-section {
-  margin-top: 16px;
-  border-top: 1px solid #e8e8e8;
-  padding-top: 12px;
+  margin-top: 0;
+  padding-top: 0;
   display: flex;
   flex-direction: column;
 }
-body.dark .project-list-section { border-color: #333; }
-
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  background: inherit; /* 跟随父级背景色 */
-}
-.section-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: #555;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-body.dark .section-title { color: #aaa; }
-.title-icon { font-size: 15px; }
-.collapse-btn {
-  background: none; border: none;
-  font-size: 11px; color: #999; cursor: pointer;
-  padding: 2px 6px; border-radius: 4px;
-}
-.collapse-btn:hover { background: #f0f0f0; }
-body.dark .collapse-btn:hover { background: #333; }
 
 .project-cards {
   display: flex;
