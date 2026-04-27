@@ -420,13 +420,14 @@ const statusInfo = computed(() => t('right_click_hint'))
   overflow: hidden;
 }
 .page-main {
-  display: grid;
-  grid-template-rows: 1fr auto auto;
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
 }
 .content {
-  min-height: 0; /* 关键：允许 grid 子项收缩 */
+  flex: 1;
+  min-height: 0; /* 关键：允许 flex 子项收缩 */
   overflow-y: auto;
   padding: 8px 16px 0;
   /* 全局美化滚动条 */
