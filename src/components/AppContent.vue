@@ -45,11 +45,14 @@ onMounted(async () => {
   await store.init()
   i18n.global.locale.value = store.config.language as 'zh' | 'en'
 
-  // 恢复深浅色模式状态
+  // 恢复深浅色模式和精简模式状态
   try {
-    const saved = await invoke<{ isDark?: boolean } | null>('get_window_state') as any
+    const saved = await invoke<{ isDark?: boolean; compactMode?: boolean } | null>('get_window_state') as any
     if (saved && typeof saved.isDark === 'boolean') {
       isDark.value = saved.isDark
+    }
+    if (saved && typeof saved.compactMode === 'boolean') {
+      compactMode.value = saved.compactMode
     }
   } catch (_) { /* 首次运行无状态文件 */ }
 
@@ -60,7 +63,7 @@ onMounted(async () => {
       try {
         const pos = await appWindow.outerPosition()
         const size = await appWindow.outerSize()
-        await invoke('save_window_state', { x: pos.x, y: pos.y, width: size.width, height: size.height, isDark: isDark.value })
+        await invoke('save_window_state', { x: pos.x, y: pos.y, width: size.width, height: size.height, isDark: isDark.value, compactMode: compactMode.value })
       } catch (_) {}
     }, 500)
   })
@@ -75,7 +78,7 @@ watch(isDark, async (val) => {
   try {
     const pos = await appWindow.outerPosition()
     const size = await appWindow.outerSize()
-    await invoke('save_window_state', { x: pos.x, y: pos.y, width: size.width, height: size.height, isDark: val })
+    await invoke('save_window_state', { x: pos.x, y: pos.y, width: size.width, height: size.height, isDark: val, compactMode: compactMode.value })
   } catch (_) {}
 })
 
@@ -83,6 +86,16 @@ const activeInstance = computed(() => store.activeInstance())
 const activeProviderId = computed(() => activeInstance.value?.active_provider_id)
 const injecting = ref(false)  // 注入进行中，防止重复点击
 const projectListCollapsed = ref(false)  // 项目列表折叠状态
+const compactMode = ref(false)  // 精简模式状态
+
+// 监听精简模式变化，自动保存
+watch(compactMode, async (val) => {
+  try {
+    const pos = await appWindow.outerPosition()
+    const size = await appWindow.outerSize()
+    await invoke('save_window_state', { x: pos.x, y: pos.y, width: size.width, height: size.height, isDark: isDark.value, compactMode: val })
+  } catch (_) {}
+})
 
 async function toggleMax() {
   if (await appWindow.isMaximized()) {
@@ -312,6 +325,9 @@ const statusInfo = computed(() => t('right_click_hint'))
         <span class="titlebar-title">MMYCodeSwitch-API</span>
       </div>
       <div class="titlebar-controls">
+        <button class="titlebar-btn compact" @click="compactMode = !compactMode" title="精简模式">
+          {{ compactMode ? '📚' : '📖' }}
+        </button>
         <button class="titlebar-btn" @click="appWindow.minimize()">─</button>
         <button class="titlebar-btn" @click="toggleMax">□</button>
         <button class="titlebar-btn close" @click="doCloseWindow">✕</button>
@@ -331,14 +347,14 @@ const statusInfo = computed(() => t('right_click_hint'))
         />
 
         <!-- 已打开项目折叠控制 -->
-        <div class="project-section-toggle" @click="projectListCollapsed = !projectListCollapsed">
+        <div v-show="!compactMode" class="project-section-toggle" @click="projectListCollapsed = !projectListCollapsed">
           <span class="toggle-icon">{{ projectListCollapsed ? '▼' : '▲' }}</span>
           <span class="toggle-title">📂 {{ t('active_projects') }} ({{ store.activeProjects.length }})</span>
         </div>
 
         <!-- 已打开项目列表 -->
         <ProjectList
-          v-show="!projectListCollapsed"
+          v-show="!compactMode"
           :projects="store.activeProjects"
           :providers="store.providers"
           @removed="handleRemoveProject"
@@ -346,14 +362,14 @@ const statusInfo = computed(() => t('right_click_hint'))
         />
       </div>
 
-      <footer class="toolbar">
+      <footer v-show="!compactMode" class="toolbar">
         <n-button size="large" secondary @click="currentPage = 'templates'">📝 {{ t('templates') }}</n-button>
         <n-button size="large" secondary @click="currentPage = 'skills'">🔧 {{ t('skills') }}</n-button>
         <n-button size="large" secondary @click="isDark = !isDark" class="always-visible">{{ isDark ? '☀️' : '🌙' }}</n-button>
         <n-button size="large" secondary @click="currentPage = 'settings'" class="always-visible">⚙️</n-button>
       </footer>
 
-      <footer class="statusbar">
+      <footer v-show="!compactMode" class="statusbar">
         <span class="statusbar-left">{{ statusInfo }}</span>
         <n-button
           v-if="store.activeProjects.length > 0"

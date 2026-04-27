@@ -28,7 +28,10 @@
       "Bash(pkill -f \"vite\")",
       "Bash(taskkill /F /PID 10480)",
       "Bash(taskkill /F /PID 42720)",
-      "Bash(powershell.exe *)"
+      "Bash(powershell.exe *)",
+      "Bash(pnpm dev *)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(taskkill *)"
     ]
   }
 }
