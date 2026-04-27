@@ -28,17 +28,17 @@ const appWindow = getCurrentWindow()
 let resizeTimeout: ReturnType<typeof setTimeout> | null = null
 
 /// 全局窗口拖拽：按住空白区域即可拖动窗口（macOS 透明窗口 data-tauri-drag-region 不可靠时的兜底）
-async function startWindowDrag(e: MouseEvent) {
+function startWindowDrag(e: MouseEvent) {
   // 忽略点击在按钮/链接/输入框等交互元素上的情况
   const target = e.target as HTMLElement
-  if (target.closest('button, a, input, select, textarea, [role="button"], .n-button, .n-input, .n-select, .n-checkbox, .n-switch, .provider-card, .project-card, .n-modal, .n-popover, .n-dropdown')) {
+  // 注意：ProviderGrid 卡片类名是 .card，ProjectList 卡片类名是 .proj-card
+  if (target.closest('button, a, input, select, textarea, [role="button"], .n-button, .n-input, .n-select, .n-checkbox, .n-switch, .card, .proj-card, .n-modal, .n-popover, .n-dropdown, .toolbar, .statusbar, .titlebar')) {
     return
   }
-  try {
-    await appWindow.startDragging()
-  } catch (_) {
+  // 同步调用，避免阻塞 UI
+  appWindow.startDragging().catch(() => {
     /* startDragging 在部分平台可能不可用，静默失败 */
-  }
+  })
 }
 
 onMounted(async () => {

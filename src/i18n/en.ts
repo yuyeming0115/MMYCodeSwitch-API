@@ -101,6 +101,7 @@ export default {
   config_dir_placeholder: '~/.claude',
   browse: 'Browse',
   select_default_dir: 'Select Default Directory',
+  browse_failed: 'Failed to select folder',
   // Cleanup
   cleanup_all_projects: 'Cleanup All Projects',
   cleanup_confirm_title: 'Confirm Cleanup',

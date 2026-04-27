@@ -101,6 +101,7 @@ export default {
   config_dir_placeholder: '~/.claude',
   browse: '浏览',
   select_default_dir: '选择默认目录',
+  browse_failed: '选择文件夹失败',
   // 一键清理
   cleanup_all_projects: '一键清理关闭项目',
   cleanup_confirm_title: '确认清理项目',

@@ -145,20 +145,30 @@ function setLang(lang: string) {
 }
 
 async function browseDefaultDir() {
-  const selected = await dialogOpen({ directory: true, title: t('select_default_dir') })
-  if (selected) {
-    defaultDir.value = selected
+  try {
+    const selected = await dialogOpen({ directory: true, title: t('select_default_dir') })
+    if (selected) {
+      defaultDir.value = selected as string
+    }
+  } catch (e) {
+    console.error('[browseDefaultDir] 错误:', e)
+    msg.error(t('browse_failed') + ': ' + (e instanceof Error ? e.message : String(e)))
   }
 }
 
 async function browseExportPath() {
-  const selected = await dialogOpen({ directory: true, title: t('backup_export_path') })
-  if (selected) {
-    exportPath.value = selected
-    // 立即保存路径到 config（自动记忆）
-    store.config.backupExportPath = selected
-    await store.saveConfig(store.config)
-    msg.info(t('backup_path_remembered'))
+  try {
+    const selected = await dialogOpen({ directory: true, title: t('backup_export_path') })
+    if (selected) {
+      exportPath.value = selected as string
+      // 立即保存路径到 config（自动记忆）
+      store.config.backupExportPath = selected as string
+      await store.saveConfig(store.config)
+      msg.info(t('backup_path_remembered'))
+    }
+  } catch (e) {
+    console.error('[browseExportPath] 错误:', e)
+    msg.error(t('browse_failed') + ': ' + (e instanceof Error ? e.message : String(e)))
   }
 }
 
