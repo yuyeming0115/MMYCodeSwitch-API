@@ -1,5 +1,5 @@
 <template>
-  <div class="grid">
+  <div class="grid" :class="{ compact }">
     <div
       v-for="p in providers"
       :key="p.id"
@@ -42,7 +42,7 @@ import type { Provider } from '../stores/app'
 
 const { t } = useI18n()
 const msg = useMessage()
-defineProps<{ providers: Provider[]; activeProviderId?: string }>()
+defineProps<{ providers: Provider[]; activeProviderId?: string; compact?: boolean }>()
 const emit = defineEmits<{ switch: [p: Provider]; edit: [p: Provider]; delete: [p: Provider]; add: [] }>()
 
 const menuVisible = ref(false)
@@ -106,7 +106,18 @@ async function onMenuSelect(key: string) {
 </script>
 
 <style scoped>
-.grid { display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 0; }
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 8px 0;
+  align-content: flex-start;
+  justify-content: center;
+}
+.grid.compact {
+  height: 100%;
+  align-content: center;
+}
 .card {
   width: 108px; min-height: 100px; border-radius: 14px; border: 2px solid #e0e0e0;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start;

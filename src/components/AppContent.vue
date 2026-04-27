@@ -340,6 +340,7 @@ const statusInfo = computed(() => t('right_click_hint'))
         <ProviderGrid
           :providers="store.providers"
           :active-provider-id="activeProviderId"
+          :compact="compactMode"
           @switch="doSwitch"
           @edit="openEdit"
           @delete="confirmDelete"
@@ -354,7 +355,7 @@ const statusInfo = computed(() => t('right_click_hint'))
 
         <!-- 已打开项目列表 -->
         <ProjectList
-          v-show="!compactMode"
+          v-show="!compactMode && !projectListCollapsed"
           :projects="store.activeProjects"
           :providers="store.providers"
           @removed="handleRemoveProject"
@@ -430,6 +431,8 @@ const statusInfo = computed(() => t('right_click_hint'))
   min-height: 0; /* 关键：允许 flex 子项收缩 */
   overflow-y: auto;
   padding: 8px 16px 0;
+  display: flex;
+  flex-direction: column;
   /* 全局美化滚动条 */
   scrollbar-width: thin;
   scrollbar-color: rgba(128,128,128,0.25) transparent;
