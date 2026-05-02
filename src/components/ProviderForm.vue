@@ -99,8 +99,8 @@
             <div v-if="protocolHint" style="font-size:11px;color:#e89834;margin-top:4px">{{ protocolHint }}</div>
           </n-form-item>
 
-          <!-- 单 Base URL -->
-          <n-form-item v-else :label="t('base_url')" required>
+          <!-- Base URL 输入框（始终显示，让用户检查确认） -->
+          <n-form-item :label="t('base_url')" required>
             <n-input v-model:value="form.base_url" placeholder="https://" />
           </n-form-item>
 
@@ -403,6 +403,14 @@ watch(() => props.provider, (p) => {
     resetForm()
   }
 }, { immediate: true })
+
+// ★ 监听协议选择变化，同步更新 base_url
+watch(selectedBaseUrlIndex, (idx) => {
+  const tpl = currentTemplate.value
+  if (tpl && tpl.baseUrls.length > 1) {
+    form.value.base_url = tpl.baseUrls[idx]?.value || ''
+  }
+})
 
 function resetForm() {
   form.value = { name: '', icon_fallback: '', provider_type: 'api', api_key_plain: '', base_url: '', models_default: '', notes: '' }
