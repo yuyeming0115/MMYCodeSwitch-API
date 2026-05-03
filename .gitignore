@@ -33,3 +33,9 @@ MMYCodeSwitch-API-Portable/
 
 # CLAUDE.md 含模型信息，不上传
 CLAUDE.md
+
+# 备份文件
+backups/
+
+# 开发文档
+开发文档/
