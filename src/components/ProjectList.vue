@@ -157,18 +157,6 @@ function handleLaunch(proj: ActiveProject) {
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 4px;
-  /* 美化滚动条 */
-  scrollbar-width: thin;
-  scrollbar-color: rgba(128,128,128,0.25) transparent;
-}
-.project-cards::-webkit-scrollbar { width: 5px; }
-.project-cards::-webkit-scrollbar-track { background: transparent; }
-.project-cards::-webkit-scrollbar-thumb {
-  background: rgba(128,128,128,0.25);
-  border-radius: 10px;
-}
-.project-cards::-webkit-scrollbar-thumb:hover {
-  background: rgba(128,128,128,0.45);
 }
 
 .empty-state {
@@ -321,9 +309,4 @@ body.dark .remove-btn:hover { background: #3a1515; }
 @media (max-width: 500px) {
   .action-btns { opacity: 1 !important; }
 }
-
-/* 深色模式滚动条 */
-body.dark .project-cards { scrollbar-color: rgba(200,200,200,0.12) transparent; }
-body.dark .project-cards::-webkit-scrollbar-thumb { background: rgba(200,200,200,0.12); }
-body.dark .project-cards::-webkit-scrollbar-thumb:hover { background: rgba(200,200,200,0.28); }
 </style>

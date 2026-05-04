@@ -137,17 +137,7 @@ body.dark .page-header { background: #242424; border-bottom-color: #333; }
   overflow-y: auto;
   padding: 16px;
   padding-bottom: 80px;  /* 为底部按钮预留空间 */
-  /* 继承全局滚动条样式 */
-  scrollbar-width: thin;
-  scrollbar-color: rgba(128,128,128,0.2) transparent;
 }
-.page-content::-webkit-scrollbar { width: 6px; }
-.page-content::-webkit-scrollbar-track { background: transparent; }
-.page-content::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.2); border-radius: 10px; }
-.page-content::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.4); }
-body.dark .page-content { scrollbar-color: rgba(200,200,200,0.12) transparent; }
-body.dark .page-content::-webkit-scrollbar-thumb { background: rgba(200,200,200,0.12); }
-body.dark .page-content::-webkit-scrollbar-thumb:hover { background: rgba(200,200,200,0.25); }
 .page-footer {
   display: flex;
   align-items: center;

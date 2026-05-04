@@ -66,6 +66,7 @@ fn upsert_provider(input: ProviderInput) -> Result<Provider, String> {
     let id = input.id.unwrap_or_else(|| format!("provider_{}", chrono::Utc::now().timestamp_millis()));
     let existing = config::load_providers().unwrap_or_default();
     let old = existing.iter().find(|p| p.id == id);
+    let max_order = existing.iter().map(|p| p.order).max().unwrap_or(0);
     let api_key_encrypted = match &input.api_key_plain {
         Some(k) if !k.is_empty() => Some(crypto::encrypt(k, &key).map_err(|e| e.to_string())?),
         _ => old.and_then(|p| p.api_key_encrypted.clone()),
@@ -80,6 +81,7 @@ fn upsert_provider(input: ProviderInput) -> Result<Provider, String> {
         models: input.models,
         notes: input.notes,
         icon_path: input.icon_path.or_else(|| old.and_then(|p| p.icon_path.clone())),
+        order: old.map(|p| p.order).unwrap_or(max_order + 1),
         created_at: old.map(|p| p.created_at.clone()).unwrap_or_else(|| now.clone()),
         updated_at: now,
     };
@@ -90,6 +92,11 @@ fn upsert_provider(input: ProviderInput) -> Result<Provider, String> {
 #[tauri::command]
 fn delete_provider(id: String) -> Result<(), String> {
     config::delete_provider(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn reorder_providers(ordered_ids: Vec<String>) -> Result<(), String> {
+    config::reorder_providers(&ordered_ids).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2078,6 +2085,7 @@ pub fn run() {
             get_providers,
             upsert_provider,
             delete_provider,
+            reorder_providers,
             switch_provider,
             inject_to_project,
             get_active_projects,

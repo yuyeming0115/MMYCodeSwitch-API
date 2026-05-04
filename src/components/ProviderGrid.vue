@@ -1,26 +1,41 @@
 <template>
-  <div class="grid" :class="{ compact }">
-    <div
-      v-for="p in providers"
-      :key="p.id"
-      class="card"
-      :class="{ active: p.id === activeProviderId }"
-      @click="emit('switch', p)"
-      @contextmenu.prevent="e => openMenu(e, p)"
-    >
-      <img v-if="p.icon_path" :src="resolveIconUrl(p.icon_path)" class="icon-img" />
-      <div v-else class="icon-wrap"><span class="icon">{{ p.icon_fallback || p.name?.charAt(0) || '?' }}</span></div>
-      <div class="label">{{ p.name }}</div>
-      <div v-if="p.id === activeProviderId" class="badge">✓</div>
-      <div v-if="testState[p.id]" class="test-badge" :class="testState[p.id]">
-        {{ testState[p.id] === 'testing' ? '…' : testState[p.id] === 'ok' ? '✓' : '✗' }}
+  <draggable
+    v-model="localProviders"
+    item-key="id"
+    :animation="200"
+    :force-fallback="true"
+    :fallback-tolerance="3"
+    ghost-class="ghost"
+    chosen-class="chosen"
+    drag-class="dragging"
+    class="grid"
+    :class="{ compact }"
+    @start="onDragStart"
+    @end="onDragEnd"
+  >
+    <template #item="{ element: p }">
+      <div
+        class="card"
+        :class="{ active: p.id === activeProviderId }"
+        @click="emit('switch', p)"
+        @contextmenu.prevent="e => openMenu(e, p)"
+      >
+        <img v-if="p.icon_path" :src="resolveIconUrl(p.icon_path)" class="icon-img" />
+        <div v-else class="icon-wrap"><span class="icon">{{ p.icon_fallback || p.name?.charAt(0) || '?' }}</span></div>
+        <div class="label">{{ p.name }}</div>
+        <div v-if="p.id === activeProviderId" class="badge">✓</div>
+        <div v-if="testState[p.id]" class="test-badge" :class="testState[p.id]">
+          {{ testState[p.id] === 'testing' ? '…' : testState[p.id] === 'ok' ? '✓' : '✗' }}
+        </div>
       </div>
-    </div>
-    <div class="card add-card" @click="emit('add')">
-      <div class="icon-wrap"><div class="icon">+</div></div>
-      <div class="label">{{ t('add_provider') }}</div>
-    </div>
-  </div>
+    </template>
+    <template #footer>
+      <div class="card add-card" @click="emit('add')">
+        <div class="icon-wrap"><div class="icon">+</div></div>
+        <div class="label">{{ t('add_provider') }}</div>
+      </div>
+    </template>
+  </draggable>
 
   <n-dropdown
     trigger="manual"
@@ -34,22 +49,36 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { useMessage } from 'naive-ui'
+import draggable from 'vuedraggable'
 import type { Provider } from '../stores/app'
 
 const { t } = useI18n()
 const msg = useMessage()
-defineProps<{ providers: Provider[]; activeProviderId?: string; compact?: boolean }>()
-const emit = defineEmits<{ switch: [p: Provider]; edit: [p: Provider]; delete: [p: Provider]; add: [] }>()
+const props = defineProps<{ providers: Provider[]; activeProviderId?: string; compact?: boolean }>()
+const emit = defineEmits<{ switch: [p: Provider]; edit: [p: Provider]; delete: [p: Provider]; add: []; reorder: [orderedIds: string[]] }>()
 
 const menuVisible = ref(false)
 const menuX = ref(0)
 const menuY = ref(0)
 const menuTarget = ref<Provider | null>(null)
 const testState = ref<Record<string, 'testing' | 'ok' | 'fail'>>({})
+
+// 拖拽状态
+const isDragging = ref(false)
+
+// 本地可变列表，用于 vuedraggable v-model
+const localProviders = ref<Provider[]>([])
+
+// 同步 props → local（拖拽中不同步，避免重置拖拽状态）
+watch(() => props.providers, (newVal) => {
+  if (!isDragging.value) {
+    localProviders.value = [...newVal]
+  }
+}, { immediate: true, deep: true })
 
 const menuOptions = [
   { label: () => t('edit'), key: 'edit' },
@@ -103,6 +132,18 @@ async function onMenuSelect(key: string) {
     setTimeout(() => { delete testState.value[id] }, 4000)
   }
 }
+
+// ── 拖拽排序 ──
+
+function onDragStart() {
+  isDragging.value = true
+}
+
+function onDragEnd() {
+  isDragging.value = false
+  const orderedIds = localProviders.value.map(p => p.id)
+  emit('reorder', orderedIds)
+}
 </script>
 
 <style scoped>
@@ -113,6 +154,7 @@ async function onMenuSelect(key: string) {
   padding: 8px 0;
   align-content: flex-start;
   justify-content: center;
+  user-select: none;
 }
 .grid.compact {
   height: 100%;
@@ -122,10 +164,12 @@ async function onMenuSelect(key: string) {
   width: 108px; min-height: 100px; border-radius: 14px; border: 2px solid #e0e0e0;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
   padding: 14px 8px 10px;
-  cursor: pointer; position: relative; transition: border-color .2s, box-shadow .2s;
-  background: #fff;
+  cursor: grab; position: relative;
+  /* 只对非 transform 属性设置 transition，避免覆盖 SortableJS 内联动画 */
+  transition: border-color .2s, box-shadow .2s;
+  background: #fff; user-select: none;
 }
-.card:hover { border-color: #18a058; box-shadow: 0 3px 10px rgba(24,160,88,0.16); transform: translateY(-1px); }
+.card:hover { border-color: #18a058; box-shadow: 0 3px 10px rgba(24,160,88,0.16); }
 .card.active { border-color: #18a058; background: #f0faf5; }
 
 /* 深色模式适配 */
@@ -133,6 +177,21 @@ body.dark .card { background: #2a2a2a; border-color: #444; }
 body.dark .card:hover { border-color: #18a058; }
 body.dark .card.active { background: #1a3a28; border-color: #18a058; }
 body.dark .label { color: #ccc; }
+
+/* 拖拽视觉反馈 */
+.ghost {
+  opacity: 0.2;
+  border: 2px dashed #4A90D9;
+  border-radius: 14px;
+}
+.chosen {
+  box-shadow: 0 4px 16px rgba(24,160,88,0.2);
+}
+.dragging {
+  transform: scale(1.05) rotate(1deg);
+  box-shadow: 0 16px 40px rgba(74, 144, 217, 0.3);
+  z-index: 9999;
+}
 
 /* 图标区域：彩色圆角背景（与 QuickSetup 风格统一） */
 .icon-wrap {
@@ -142,7 +201,7 @@ body.dark .label { color: #ccc; }
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 8px;
   background: linear-gradient(135deg, #f8f8f8, #eee);
-  transition: all 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 body.dark .icon-wrap {
   background: linear-gradient(135deg, #333, #3a3a3a);
@@ -153,8 +212,8 @@ body.dark .icon-wrap {
   border-color: #18a05860;
   box-shadow: 0 2px 6px rgba(24,160,88,0.15);
 }
-.icon { 
-  font-size: 18px; 
+.icon {
+  font-size: 18px;
   line-height: 1;
   color: #555;
   font-weight: 700;
@@ -180,7 +239,7 @@ body.dark .icon { color: #ccc; }
 .test-badge.ok { color: #18a058; }
 .test-badge.fail { color: #d03050; }
 .icon-img { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; }
-.add-card { border-style: dashed; background: #fafafa; }
+.add-card { border-style: dashed; background: #fafafa; cursor: pointer; }
 body.dark .add-card { background: #222; }
 .add-card .icon { color: #bbb; font-size: 26px; }
 .add-card .icon-wrap { background: none; border-style: dashed; }

@@ -12,6 +12,7 @@ export interface Provider {
   models?: Record<string, string>
   notes?: string
   icon_path?: string
+  order?: number
   created_at: string
   updated_at: string
 }
@@ -147,6 +148,11 @@ export const useAppStore = defineStore('app', () => {
     await loadProviders()
   }
 
+  async function reorderProviders(orderedIds: string[]) {
+    await invoke('reorder_providers', { orderedIds })
+    await loadProviders()
+  }
+
   async function switchProvider(providerId: string) {
     const inst = activeInstance()
     if (!inst) throw new Error('No instance')
@@ -251,7 +257,7 @@ export const useAppStore = defineStore('app', () => {
   return {
     providers, config, activeInstanceId, activeInstance,
     activeProjects, templates, templateBindings, skills, providerTemplates,
-    init, loadProviders, upsertProvider, deleteProvider,
+    init, loadProviders, upsertProvider, deleteProvider, reorderProviders,
     switchProvider, saveConfig,
     injectToProject, removeActiveProject, loadActiveProjects,
     getProjectSessions,

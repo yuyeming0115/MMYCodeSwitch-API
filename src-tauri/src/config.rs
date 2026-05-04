@@ -23,6 +23,8 @@ pub struct Provider {
     pub notes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon_path: Option<String>,
+    #[serde(default)]
+    pub order: u32,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -157,7 +159,10 @@ pub fn load_providers() -> Result<Vec<Provider>> {
             }
         }
     }
-    providers.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+    // 先按 order 排序，order 相同则按 created_at 排序
+    providers.sort_by(|a, b| {
+        a.order.cmp(&b.order).then_with(|| a.created_at.cmp(&b.created_at))
+    });
     Ok(providers)
 }
 
@@ -170,6 +175,18 @@ pub fn save_provider(provider: &Provider) -> Result<()> {
 pub fn delete_provider(id: &str) -> Result<()> {
     let path = mmycs_dir().join("providers").join(format!("{}.json", id));
     if path.exists() { std::fs::remove_file(path)?; }
+    Ok(())
+}
+
+/// 重排供应商顺序：接收排序后的 ID 列表，依次写入 order 字段
+pub fn reorder_providers(ordered_ids: &[String]) -> Result<()> {
+    let mut providers = load_providers()?;
+    for (idx, id) in ordered_ids.iter().enumerate() {
+        if let Some(p) = providers.iter_mut().find(|p| p.id == *id) {
+            p.order = idx as u32;
+            save_provider(p)?;
+        }
+    }
     Ok(())
 }
 

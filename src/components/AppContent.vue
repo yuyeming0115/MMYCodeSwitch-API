@@ -312,6 +312,11 @@ function confirmDelete(p: Provider) {
   })
 }
 
+// 拖拽重排供应商顺序
+async function handleReorder(orderedIds: string[]) {
+  await store.reorderProviders(orderedIds)
+}
+
 // 状态栏信息
 const statusInfo = computed(() => t('right_click_hint'))
 </script>
@@ -345,6 +350,7 @@ const statusInfo = computed(() => t('right_click_hint'))
           @edit="openEdit"
           @delete="confirmDelete"
           @add="openAdd"
+          @reorder="handleReorder"
         />
 
         <!-- 已打开项目折叠控制 -->
@@ -433,18 +439,6 @@ const statusInfo = computed(() => t('right_click_hint'))
   padding: 8px 16px 0;
   display: flex;
   flex-direction: column;
-  /* 全局美化滚动条 */
-  scrollbar-width: thin;
-  scrollbar-color: rgba(128,128,128,0.25) transparent;
-}
-.content::-webkit-scrollbar { width: 5px; }
-.content::-webkit-scrollbar-track { background: transparent; }
-.content::-webkit-scrollbar-thumb {
-  background: rgba(128,128,128,0.25);
-  border-radius: 10px;
-}
-.content::-webkit-scrollbar-thumb:hover {
-  background: rgba(128,128,128,0.45);
 }
 
 /* 项目列表折叠控制 */
@@ -536,9 +530,6 @@ body.dark .statusbar {
   color: #888;
   background: #1a1a1a;
 }
-body.dark .content { scrollbar-color: rgba(200,200,200,0.12) transparent; }
-body.dark .content::-webkit-scrollbar-thumb { background: rgba(200,200,200,0.12); }
-body.dark .content::-webkit-scrollbar-thumb:hover { background: rgba(200,200,200,0.28); }
 
 /* 响应式：窄屏时按钮变小 */
 @media (max-width: 400px) {
