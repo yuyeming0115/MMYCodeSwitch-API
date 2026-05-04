@@ -1,55 +1,67 @@
 <template>
   <div class="project-list-section">
-    <div class="project-cards">
-      <!-- 空状态 -->
-      <div v-if="projects.length === 0" class="empty-state">
-        <span class="empty-icon">🎯</span>
-        <p>{{ t('no_active_projects') }}</p>
-      </div>
-
-      <!-- 项目卡片列表 -->
-      <div
-        v-for="proj in projects"
-        :key="proj.id"
-        class="proj-card"
-      >
-        <!-- 左侧供应商图标（图片/首字母fallback） -->
-        <div class="proj-icon" :class="{ 'no-img': !providerIconUrl(proj) }" :style="!providerIconUrl(proj) ? { background: providerIconBg(proj.provider_id) } : {}">
-          <img v-if="providerIconUrl(proj)" class="proj-icon-img" :src="resolveIconUrl(providerIconUrl(proj)!)" :alt="proj.provider_name" />
-          <span v-else class="proj-icon-text">{{ providerFirstLetter(proj) }}</span>
-        </div>
-
-        <!-- 中间信息区 -->
-        <div class="proj-info">
-          <div class="proj-name" :title="proj.project_path || ''">{{ proj.name || '未知项目' }}</div>
-          <div class="proj-meta">
-            <span class="proj-provider">{{ proj.provider_name || '未知供应商' }}</span>
-            <span class="proj-time">{{ formatTime(proj.updated_at) }}</span>
-          </div>
-          <div class="proj-path" :title="proj.project_path || ''">{{ truncatePath(proj.project_path) }}</div>
-        </div>
-
-        <!-- 右侧按钮组 -->
-        <div class="action-btns">
-          <button
-            class="launch-btn"
-            :title="t('continue_dev')"
-            @click.stop="handleLaunch(proj)"
-          >▶</button>
-          <button
-            class="remove-btn"
-            :title="t('remove_project')"
-            @click.stop="handleRemove(proj)"
-          >✕</button>
-        </div>
-      </div>
+    <!-- 空状态 -->
+    <div v-if="projects.length === 0" class="empty-state">
+      <span class="empty-icon"></span>
+      <p>{{ t('no_active_projects') }}</p>
     </div>
+
+    <draggable
+      v-else
+      v-model="localProjects"
+      item-key="id"
+      :animation="200"
+      :force-fallback="true"
+      :fallback-tolerance="3"
+      ghost-class="ghost"
+      chosen-class="chosen"
+      drag-class="dragging"
+      class="project-cards"
+      @start="onDragStart"
+      @end="onDragEnd"
+    >
+      <template #item="{ element: proj }">
+        <div class="proj-card">
+          <!-- 左侧供应商图标（图片/首字母fallback） -->
+          <div class="proj-icon" :class="{ 'no-img': !providerIconUrl(proj) }" :style="!providerIconUrl(proj) ? { background: providerIconBg(proj.provider_id) } : {}">
+            <img v-if="providerIconUrl(proj)" class="proj-icon-img" :src="resolveIconUrl(providerIconUrl(proj)!)" :alt="proj.provider_name" />
+            <span v-else class="proj-icon-text">{{ providerFirstLetter(proj) }}</span>
+          </div>
+
+          <!-- 中间信息区 -->
+          <div class="proj-info">
+            <div class="proj-name" :title="proj.project_path || ''">{{ proj.name || '未知项目' }}</div>
+            <div class="proj-meta">
+              <span class="proj-provider">{{ proj.provider_name || '未知供应商' }}</span>
+              <span class="proj-time">{{ formatTime(proj.updated_at) }}</span>
+            </div>
+            <div class="proj-path" :title="proj.project_path || ''">{{ truncatePath(proj.project_path) }}</div>
+          </div>
+
+          <!-- 右侧按钮组 -->
+          <div class="action-btns">
+            <button
+              class="launch-btn"
+              :title="t('continue_dev')"
+              @click.stop="handleLaunch(proj)"
+            >▶</button>
+            <button
+              class="remove-btn"
+              :title="t('remove_project')"
+              @click.stop="handleRemove(proj)"
+            >✕</button>
+          </div>
+        </div>
+      </template>
+    </draggable>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDialog, useMessage } from 'naive-ui'
+import draggable from 'vuedraggable'
 import type { ActiveProject, Provider } from '../stores/app'
 
 const { t } = useI18n()
@@ -63,7 +75,29 @@ const props = defineProps<{
 const emit = defineEmits<{
   removed: [id: string]
   launch: [projectPath: string]
+  reorder: [orderedIds: string[]]
 }>()
+
+// 拖拽状态
+const isDragging = ref(false)
+const localProjects = ref<ActiveProject[]>([])
+
+// 同步 props → local（拖拽中不同步，避免重置拖拽状态）
+watch(() => props.projects, (newVal) => {
+  if (!isDragging.value) {
+    localProjects.value = [...newVal]
+  }
+}, { immediate: true, deep: true })
+
+function onDragStart() {
+  isDragging.value = true
+}
+
+function onDragEnd() {
+  isDragging.value = false
+  const orderedIds = localProjects.value.map(p => p.id)
+  emit('reorder', orderedIds)
+}
 
 /// 获取供应商的 icon_path（有则返回路径，无则返回 null）
 function providerIconUrl(proj: ActiveProject): string | null {
@@ -181,6 +215,7 @@ function handleLaunch(proj: ActiveProject) {
   background: #fff;
   transition: border-color .2s, box-shadow .2s;
   gap: 10px;
+  cursor: grab;
 }
 .proj-card:hover {
   border-color: #c0c0c0;
@@ -309,4 +344,28 @@ body.dark .remove-btn:hover { background: #3a1515; }
 @media (max-width: 500px) {
   .action-btns { opacity: 1 !important; }
 }
+
+/* 拖拽视觉反馈（与 ProviderGrid 一致） */
+.ghost {
+  opacity: 0.2;
+  border: 2px dashed #4A90D9;
+  border-radius: 12px;
+}
+.chosen {
+  box-shadow: 0 4px 16px rgba(24,160,88,0.2);
+}
+.dragging {
+  transform: scale(1.05) rotate(1deg);
+  box-shadow: 0 16px 40px rgba(74, 144, 217, 0.3);
+  z-index: 9999;
+}
+</style>
+
+<!-- 深色模式滚动条（全局样式，不受 scoped 影响） -->
+<style>
+body.dark .project-cards { scrollbar-color: rgba(200,200,200,0.35) #2a2a2a !important; }
+body.dark .project-cards::-webkit-scrollbar { background: #2a2a2a; }
+body.dark .project-cards::-webkit-scrollbar-track { background: #2a2a2a; }
+body.dark .project-cards::-webkit-scrollbar-thumb { background: rgba(200,200,200,0.35) !important; }
+body.dark .project-cards::-webkit-scrollbar-thumb:hover { background: rgba(200,200,200,0.5) !important; }
 </style>

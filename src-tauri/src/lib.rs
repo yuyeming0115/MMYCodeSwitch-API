@@ -100,6 +100,11 @@ fn reorder_providers(ordered_ids: Vec<String>) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn reorder_projects(ordered_ids: Vec<String>) -> Result<(), String> {
+    config::reorder_projects(&ordered_ids).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn switch_provider(config_dir: String, provider_id: String) -> Result<(), String> {
     let providers = config::load_providers().map_err(|e| e.to_string())?;
     let provider = providers.iter().find(|p| p.id == provider_id)
@@ -172,6 +177,7 @@ fn inject_to_project(project_path: String, provider_id: String) -> Result<Inject
         cfg.active_projects[idx].clone()
     } else {
         // 新增记录
+        let max_order = cfg.active_projects.iter().map(|p| p.order).max().unwrap_or(0);
         let new_proj = ActiveProject {
             id: format!("proj_{}", chrono::Utc::now().timestamp_millis()),
             name: project_name,
@@ -181,6 +187,7 @@ fn inject_to_project(project_path: String, provider_id: String) -> Result<Inject
             created_at: now.clone(),
             updated_at: now,
             config_dir: Some(config_dir.clone()),
+            order: max_order + 1,
         };
         cfg.active_projects.push(new_proj.clone());
         new_proj
@@ -195,7 +202,9 @@ fn inject_to_project(project_path: String, provider_id: String) -> Result<Inject
 #[tauri::command]
 fn get_active_projects() -> Result<Vec<ActiveProject>, String> {
     let cfg = config::load_app_config().map_err(|e| e.to_string())?;
-    Ok(cfg.active_projects)
+    let mut projects = cfg.active_projects;
+    projects.sort_by(|a, b| a.order.cmp(&b.order));
+    Ok(projects)
 }
 
 // ── 移除已激活项目（从列表删除 + 清理 CLAUDE.md 标记块） ───────────────
@@ -679,6 +688,9 @@ pub struct Template {
     pub content: String,
     pub created_at: String,
     pub updated_at: String,
+    /// 是否为内置模板
+    #[serde(default)]
+    pub builtin: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -701,30 +713,74 @@ fn template_bindings_path() -> std::path::PathBuf {
     config::mmycs_dir().join("template_bindings.json")
 }
 
+/// 内置规则模板（硬编码，随应用更新）
+fn get_builtin_rule_templates() -> Vec<Template> {
+    let now = chrono::Utc::now().to_rfc3339();
+    vec![
+        Template {
+            name: "通用开发规范".to_string(),
+            content: "# 通用开发规范\n\n## 编码原则\n- **最小化修改**：每次改动只解决当前问题，不顺手重构无关代码\n- **只读现有代码**：修改前先完整理解上下文，不引入新依赖\n- **渐进式修改**：大功能分步实现，每步都可独立验证\n- **保持向后兼容**：除非明确要求，不破坏已有 API 或接口\n\n## 质量要求\n- 修改后运行 lint/build/test，确保通过再提交\n- 新增代码必须包含必要的注释，解释 \"为什么\" 而非 \"做什么\"\n- 错误处理要具体，不使用空的 catch / unwrap\n- 日志要包含上下文信息，方便排查问题\n\n## 工作流程\n- 先给出方案再写代码（对于复杂变更）\n- 代码审查时说明修改意图和影响范围\n- 不确定时先问，不要猜测".to_string(),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            builtin: true,
+        },
+        Template {
+            name: "前端项目规范".to_string(),
+            content: "# 前端项目规范\n\n## 技术栈\n- Vue 3 + TypeScript + Vite\n- Naive UI 组件库\n- Pinia 状态管理\n- Vue Router 路由管理\n\n## 编码规范\n- 组件文件使用 PascalCase 命名（`ProviderGrid.vue`）\n- 组合式 API 优先（`<script setup>`）\n- Props/Emits 使用 TypeScript 类型定义\n- 所有组件必须有 scoped 样式，避免全局污染\n\n## 样式规范\n- 使用 scoped 样式 + CSS 变量\n- 深色模式使用 `body.dark .class` 选择器\n- 全局滚动条样式放在 `App.vue` 的非 scoped 块中\n\n## API 请求\n- 使用统一的 request 封装，处理 token 刷新和错误\n- API 错误统一展示 toast 提示\n- 接口类型定义放在 `types/` 目录下\n\n## 国际化\n- 所有用户可见文本必须通过 `useI18n` 获取\n- i18n key 使用 snake_case 命名".to_string(),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            builtin: true,
+        },
+        Template {
+            name: "后端/API 规范".to_string(),
+            content: "# 后端/API 规范\n\n## API 设计\n- 使用 RESTful 风格：`GET /resources`, `POST /resources`, `PUT /resources/{id}`\n- 所有接口必须返回统一的 JSON 格式：`{ success: bool, data?: any, error?: string }`\n- 使用有意义的 HTTP 状态码（200, 201, 400, 404, 500）\n- 分页参数：`page`, `pageSize`；返回：`{ items, total, page, pageSize }`\n\n## 错误处理\n- 使用 Result/Option 模式，不使用 unwrap\n- 业务错误返回明确的错误码和消息\n- 敏感信息（密码、token）绝不记录到日志\n- 所有外部输入必须验证和消毒\n\n## 数据库\n- 使用迁移管理 schema 变更，不可手动修改数据库\n- 查询使用参数化语句，防止 SQL 注入\n- 索引设计考虑查询模式，避免全表扫描\n- 软删除优先于物理删除（`deleted_at` 字段）\n\n## 安全\n- API 必须使用认证（JWT/Bearer Token）\n- 敏感操作需要额外授权检查\n- 定期轮换密钥和 token".to_string(),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            builtin: true,
+        },
+        Template {
+            name: "Git 提交规范".to_string(),
+            content: "# Git 提交规范\n\n## Conventional Commits 格式\n\n```\n<type>(<scope>): <description>\n\n[optional body]\n\n[optional footer(s)]\n```\n\n## Type 类型\n- `feat`: 新功能\n- `fix`: Bug 修复\n- `docs`: 文档更新\n- `style`: 代码格式（不影响功能）\n- `refactor`: 重构（不新增功能、不修复 Bug）\n- `test`: 测试相关\n- `chore`: 构建/工具链相关\n- `perf`: 性能优化\n\n## 示例\n- `feat(auth): 添加 OAuth2 登录支持`\n- `fix(api): 修复分页参数越界问题`\n- `refactor(store): 重构 Pinia store 模块拆分`\n\n## 提交前检查\n- 运行 lint（`npm run lint` 或 `cargo clippy`）\n- 运行测试（`npm test` 或 `cargo test`）\n- 确保不提交敏感文件（`.env`, `credentials.json`）\n- 提交信息用中文书写（团队约定）\n- 单次提交只包含一个逻辑变更".to_string(),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            builtin: true,
+        },
+    ]
+}
+
+// 内置模板名称列表（用于删除保护）
+const BUILTIN_TEMPLATE_NAMES: &[&str] = &["通用开发规范", "前端项目规范", "后端/API 规范", "Git 提交规范"];
+
 #[tauri::command]
 fn get_templates() -> Result<Vec<Template>, String> {
+    // 1. 内置模板在前
+    let mut all = get_builtin_rule_templates();
+    // 2. 用户自定义模板
     let dir = templates_dir();
-    if !dir.exists() {
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        return Ok(vec![]);
-    }
-    let mut templates = vec![];
-    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        if entry.path().extension().and_then(|e| e.to_str()) == Some("md") {
-            let name = entry.path().file_stem().and_then(|n| n.to_str()).unwrap_or("").to_string();
-            let content = std::fs::read_to_string(entry.path()).map_err(|e| e.to_string())?;
-            // 从文件名推断创建/更新时间（简化处理）
-            templates.push(Template {
-                name,
-                content,
-                created_at: chrono::Utc::now().to_rfc3339(),
-                updated_at: chrono::Utc::now().to_rfc3339(),
-            });
+    if dir.exists() {
+        for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if entry.path().extension().and_then(|e| e.to_str()) == Some("md") {
+                let name = entry.path().file_stem().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                let content = std::fs::read_to_string(entry.path()).map_err(|e| e.to_string())?;
+                // 跳过已内置的同名模板（用户已采用）
+                if !BUILTIN_TEMPLATE_NAMES.contains(&name.as_str()) {
+                    all.push(Template {
+                        name,
+                        content,
+                        created_at: chrono::Utc::now().to_rfc3339(),
+                        updated_at: chrono::Utc::now().to_rfc3339(),
+                        builtin: false,
+                    });
+                }
+            }
         }
     }
-    templates.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(templates)
+    // builtin 在前，同类型按名称排序
+    all.sort_by(|a, b| {
+        a.builtin.cmp(&b.builtin).reverse().then_with(|| a.name.cmp(&b.name))
+    });
+    Ok(all)
 }
 
 #[tauri::command]
@@ -736,8 +792,24 @@ fn save_template(name: String, content: String) -> Result<(), String> {
     Ok(())
 }
 
+/// 采用内置模板：将内置模板内容复制到用户模板目录
+#[tauri::command]
+fn adopt_template(name: String) -> Result<(), String> {
+    let builtin = get_builtin_rule_templates();
+    let tpl = builtin.iter().find(|t| t.name == name).ok_or("内置模板不存在")?;
+    let dir = templates_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("{}.md", tpl.name));
+    std::fs::write(&path, &tpl.content).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 fn delete_template(name: String) -> Result<(), String> {
+    // 禁止删除内置模板
+    if BUILTIN_TEMPLATE_NAMES.contains(&name.as_str()) {
+        return Err("内置模板不可删除".to_string());
+    }
     let path = templates_dir().join(format!("{}.md", name));
     if path.exists() {
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
@@ -2086,6 +2158,7 @@ pub fn run() {
             upsert_provider,
             delete_provider,
             reorder_providers,
+            reorder_projects,
             switch_provider,
             inject_to_project,
             get_active_projects,
@@ -2115,6 +2188,7 @@ pub fn run() {
             get_templates,
             save_template,
             delete_template,
+            adopt_template,
             get_template_bindings,
             bind_template,
             unbind_template,

@@ -56,6 +56,9 @@ pub struct ActiveProject {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(alias = "configDir")]
     pub config_dir: Option<String>,
+    /// 排序索引（拖拽排序用）
+    #[serde(default)]
+    pub order: u32,
 }
 
 /// 会话归档记录（切换供应商时记录）
@@ -187,6 +190,18 @@ pub fn reorder_providers(ordered_ids: &[String]) -> Result<()> {
             save_provider(p)?;
         }
     }
+    Ok(())
+}
+
+/// 重排项目顺序：接收排序后的 ID 列表，依次写入 order 字段
+pub fn reorder_projects(ordered_ids: &[String]) -> Result<()> {
+    let mut cfg = load_app_config()?;
+    for (idx, id) in ordered_ids.iter().enumerate() {
+        if let Some(p) = cfg.active_projects.iter_mut().find(|p| p.id == *id) {
+            p.order = idx as u32;
+        }
+    }
+    save_app_config(&cfg)?;
     Ok(())
 }
 

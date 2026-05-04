@@ -41,6 +41,7 @@ export interface ActiveProject {
   created_at: string
   updated_at: string
   config_dir?: string
+  order?: number
 }
 
 export interface SessionArchive {
@@ -57,6 +58,7 @@ export interface Template {
   content: string
   created_at: string
   updated_at: string
+  builtin?: boolean
 }
 
 export interface TemplateBinding {
@@ -185,6 +187,11 @@ export const useAppStore = defineStore('app', () => {
     await loadActiveProjects()
   }
 
+  async function reorderActiveProjects(orderedIds: string[]) {
+    await invoke('reorder_projects', { orderedIds })
+    await loadActiveProjects()
+  }
+
   // Template 管理
   async function loadTemplates() {
     templates.value = await invoke<Template[]>('get_templates')
@@ -197,6 +204,11 @@ export const useAppStore = defineStore('app', () => {
 
   async function deleteTemplate(name: string) {
     await invoke('delete_template', { name })
+    await loadTemplates()
+  }
+
+  async function adoptTemplate(name: string) {
+    await invoke('adopt_template', { name })
     await loadTemplates()
   }
 
@@ -257,12 +269,12 @@ export const useAppStore = defineStore('app', () => {
   return {
     providers, config, activeInstanceId, activeInstance,
     activeProjects, templates, templateBindings, skills, providerTemplates,
-    init, loadProviders, upsertProvider, deleteProvider, reorderProviders,
+    init, loadProviders, upsertProvider, deleteProvider, reorderProviders, reorderActiveProjects,
     switchProvider, saveConfig,
     injectToProject, removeActiveProject, loadActiveProjects,
     getProjectSessions,
     // Template
-    loadTemplates, saveTemplate, deleteTemplate,
+    loadTemplates, saveTemplate, deleteTemplate, adoptTemplate,
     loadTemplateBindings, bindTemplate, unbindTemplate,
     injectClaudeMd, getProjectTemplate,
     // Skill

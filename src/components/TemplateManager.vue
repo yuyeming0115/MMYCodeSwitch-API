@@ -12,12 +12,21 @@
       <n-divider>{{ t('templates') }}</n-divider>
       <div v-if="store.templates.length === 0" class="empty-hint">{{ t('none') }}</div>
       <div v-else class="template-list">
-        <div v-for="tpl in store.templates" class="template-item" :key="tpl.name">
+        <div v-for="tpl in store.templates" class="template-item" :class="{ builtin: tpl.builtin }" :key="tpl.name">
           <div class="template-header">
-            <span class="template-name">{{ tpl.name }}</span>
+            <span class="template-name">
+              {{ tpl.name }}
+              <span v-if="tpl.builtin" class="builtin-badge">{{ t('template_builtin') }}</span>
+            </span>
             <n-space>
-              <n-button size="small" @click="editTemplate(tpl)">{{ t('edit') }}</n-button>
-              <n-button size="small" type="error" @click="confirmDelete(tpl.name)">{{ t('delete') }}</n-button>
+              <template v-if="tpl.builtin">
+                <n-button v-if="isAdopted(tpl.name)" size="small" disabled type="success">{{ t('template_adopted') }}</n-button>
+                <n-button v-else size="small" type="primary" @click="doAdopt(tpl.name)">{{ t('template_adopt') }}</n-button>
+              </template>
+              <template v-else>
+                <n-button size="small" @click="editTemplate(tpl)">{{ t('edit') }}</n-button>
+                <n-button size="small" type="error" @click="confirmDelete(tpl.name)">{{ t('delete') }}</n-button>
+              </template>
             </n-space>
           </div>
         </div>
@@ -38,16 +47,31 @@
         </div>
       </div>
 
-      <!-- 添加/编辑模态框 -->
+      <!-- 添加/编辑模态框 — 单文本框一键导入 -->
       <n-modal v-model:show="showAddModal" preset="dialog" :title="editing ? t('template_edit') : t('template_add')">
+        <!-- 名称（只读，自动从内容第一行 # 标题提取） -->
         <n-form-item :label="t('template_name')">
-          <n-input v-model:value="templateName" :disabled="editing" placeholder="vue-standard" />
+          <n-input v-model:value="templateName" :disabled="true" :placeholder="t('template_name_auto')" />
         </n-form-item>
-        <n-form-item :label="t('template_content')">
-          <n-input v-model:value="templateContent" type="textarea" :rows="10" placeholder="# 项目开发规范..." />
-        </n-form-item>
+        <!-- 文本框（粘贴内容 / 拖入 .md 文件） -->
+        <div
+          class="drop-zone"
+          :class="{ 'drag-over': isDragOver }"
+          @dragover.prevent="isDragOver = true"
+          @dragleave="isDragOver = false"
+          @drop.prevent="onFileDrop"
+        >
+          <n-input
+            v-model:value="templateContent"
+            type="textarea"
+            :rows="12"
+            :placeholder="t('template_content_placeholder')"
+            @input="autoExtractName"
+          />
+          <div v-if="isDragOver" class="drop-overlay">{{ t('drop_file_hint') }}</div>
+        </div>
         <template #action>
-          <n-button @click="showAddModal = false">{{ t('cancel') }}</n-button>
+          <n-button @click="closeModal">{{ t('cancel') }}</n-button>
           <n-button type="primary" @click="saveTemplate">{{ t('save') }}</n-button>
         </template>
       </n-modal>
@@ -75,6 +99,16 @@ const showAddModal = ref(false)
 const templateName = ref('')
 const templateContent = ref('')
 const editing = ref(false)
+const isDragOver = ref(false)
+
+/** 从内容第一行自动提取名称（markdown # 标题） */
+function autoExtractName() {
+  const firstLine = templateContent.value.split('\n')[0]?.trim()
+  const match = firstLine?.match(/^#\s+(.+)/)
+  if (match && match[1]) {
+    templateName.value = match[1].trim()
+  }
+}
 
 function editTemplate(tpl: Template) {
   editing.value = true
@@ -90,10 +124,33 @@ async function saveTemplate() {
   }
   await store.saveTemplate(templateName.value.trim(), templateContent.value)
   msg.success(t('template_save_success'))
+  closeModal()
+}
+
+function closeModal() {
   showAddModal.value = false
   templateName.value = ''
   templateContent.value = ''
   editing.value = false
+  isDragOver.value = false
+}
+
+/** 拖入 .md 文件：读取文件名作为名称，内容作为模板内容 */
+async function onFileDrop(e: DragEvent) {
+  isDragOver.value = false
+  const file = e.dataTransfer?.files?.[0]
+  if (!file) return
+  if (!file.name.endsWith('.md') && !file.name.endsWith('.txt')) {
+    msg.error(t('template_drop_invalid_file'))
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = () => {
+    templateContent.value = reader.result as string
+    templateName.value = file.name.replace(/\.(md|txt)$/, '')
+    autoExtractName()
+  }
+  reader.readAsText(file)
 }
 
 function confirmDelete(name: string) {
@@ -112,6 +169,21 @@ function confirmDelete(name: string) {
 async function unbind(projectPath: string) {
   await store.unbindTemplate(projectPath)
   msg.success(t('template_unbind'))
+}
+
+/** 判断内置模板是否已被用户采用（用户目录下存在同名模板文件） */
+function isAdopted(name: string): boolean {
+  return store.templates.some(t => t.name === name && !t.builtin)
+}
+
+/** 采用内置模板 */
+async function doAdopt(name: string) {
+  try {
+    await store.adoptTemplate(name)
+    msg.success(t('template_adopt_success'))
+  } catch (e) {
+    msg.error(t('template_adopt_failed', { msg: (e instanceof Error ? e.message : String(e)) }))
+  }
 }
 </script>
 
@@ -136,7 +208,7 @@ body.dark .page-header { background: #242424; border-bottom-color: #333; }
   flex: 1;
   overflow-y: auto;
   padding: 16px;
-  padding-bottom: 80px;  /* 为底部按钮预留空间 */
+  padding-bottom: 80px;
 }
 .page-footer {
   display: flex;
@@ -169,4 +241,55 @@ body.dark .template-item, body.dark .binding-item { background: #2a2a2a; }
 .binding-path { font-size: 12px; color: #666; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 body.dark .binding-path { color: #888; }
 .binding-template { font-size: 12px; color: #2080f0; margin-left: 8px; }
+
+/* 内置模板样式 */
+.template-item.builtin {
+  background: #f0f7ff;
+  border-left: 3px solid #2080f0;
+}
+body.dark .template-item.builtin {
+  background: #1a2a3a;
+  border-left-color: #3080d0;
+}
+.builtin-badge {
+  display: inline-block;
+  font-size: 10px;
+  color: #2080f0;
+  background: #e8f4ff;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-left: 8px;
+  font-weight: 400;
+}
+body.dark .builtin-badge {
+  color: #5ca0e0;
+  background: #1a2a3a;
+}
+
+/* 拖拽区域 */
+.drop-zone {
+  position: relative;
+  border: 2px dashed transparent;
+  border-radius: 6px;
+  transition: border-color 0.2s, background 0.2s;
+}
+.drop-zone.drag-over {
+  border-color: #18a058;
+  background: rgba(24, 160, 88, 0.06);
+}
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: #18a058;
+  font-weight: 600;
+  background: rgba(24, 160, 88, 0.08);
+  border-radius: 6px;
+  pointer-events: none;
+}
+body.dark .drop-zone.drag-over { background: rgba(24, 160, 88, 0.1); }
+body.dark .drop-overlay { color: #5fb67c; background: rgba(24, 160, 88, 0.1); }
 </style>

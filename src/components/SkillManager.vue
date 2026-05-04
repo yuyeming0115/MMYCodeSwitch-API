@@ -28,16 +28,31 @@
         {{ t('skill_add') }}
       </n-button>
 
-      <!-- 添加/编辑模态框 -->
+      <!-- 添加/编辑模态框 — 单文本框一键导入 -->
       <n-modal v-model:show="showAddModal" preset="dialog" :title="editing ? t('skill_edit') : t('skill_add')">
+        <!-- 名称（只读，自动从内容第一行提取） -->
         <n-form-item :label="t('skill_name')">
-          <n-input v-model:value="skillName" :disabled="editing" placeholder="simplify" />
+          <n-input v-model:value="skillName" :disabled="true" :placeholder="t('skill_name_auto')" />
         </n-form-item>
-        <n-form-item :label="t('skill_content')">
-          <n-input v-model:value="skillContent" type="textarea" :rows="10" placeholder="# skill name..." />
-        </n-form-item>
+        <!-- 文本框（粘贴内容 / 拖入 .md 文件） -->
+        <div
+          class="drop-zone"
+          :class="{ 'drag-over': isDragOver }"
+          @dragover.prevent="isDragOver = true"
+          @dragleave="isDragOver = false"
+          @drop.prevent="onFileDrop"
+        >
+          <n-input
+            v-model:value="skillContent"
+            type="textarea"
+            :rows="12"
+            :placeholder="t('skill_content_placeholder')"
+            @input="autoExtractName"
+          />
+          <div v-if="isDragOver" class="drop-overlay">{{ t('drop_file_hint') }}</div>
+        </div>
         <template #action>
-          <n-button @click="showAddModal = false">{{ t('cancel') }}</n-button>
+          <n-button @click="closeModal">{{ t('cancel') }}</n-button>
           <n-button type="primary" @click="saveSkill">{{ t('save') }}</n-button>
         </template>
       </n-modal>
@@ -65,6 +80,16 @@ const showAddModal = ref(false)
 const skillName = ref('')
 const skillContent = ref('')
 const editing = ref(false)
+const isDragOver = ref(false)
+
+/** 从内容第一行自动提取名称（markdown # 标题） */
+function autoExtractName() {
+  const firstLine = skillContent.value.split('\n')[0]?.trim()
+  const match = firstLine?.match(/^#\s+(.+)/)
+  if (match && match[1]) {
+    skillName.value = match[1].trim()
+  }
+}
 
 function editSkill(skill: Skill) {
   editing.value = true
@@ -80,10 +105,36 @@ async function saveSkill() {
   }
   await store.saveSkill(skillName.value.trim(), skillContent.value)
   msg.success(t('skill_save_success'))
+  closeModal()
+}
+
+function closeModal() {
   showAddModal.value = false
   skillName.value = ''
   skillContent.value = ''
   editing.value = false
+  isDragOver.value = false
+}
+
+/** 拖入 .md 文件：读取文件名作为名称，内容作为 Skill 内容 */
+async function onFileDrop(e: DragEvent) {
+  isDragOver.value = false
+  const file = e.dataTransfer?.files?.[0]
+  if (!file) return
+  if (!file.name.endsWith('.md') && !file.name.endsWith('.txt')) {
+    msg.error(t('skill_drop_invalid_file'))
+    return
+  }
+  // 用 Tauri fs 读取文件内容（通过 path）
+  // 浏览器端无法直接获取 path，改用 FileReader 读取
+  const reader = new FileReader()
+  reader.onload = () => {
+    skillContent.value = reader.result as string
+    // 用文件名（不含扩展名）作为 Skill 名
+    skillName.value = file.name.replace(/\.(md|txt)$/, '')
+    autoExtractName()
+  }
+  reader.readAsText(file)
 }
 
 function confirmDelete(name: string) {
@@ -121,7 +172,7 @@ body.dark .page-header { background: #242424; border-bottom-color: #333; }
   flex: 1;
   overflow-y: auto;
   padding: 16px;
-  padding-bottom: 80px;  /* 为底部按钮预留空间 */
+  padding-bottom: 80px;
 }
 .page-footer {
   display: flex;
@@ -155,4 +206,31 @@ body.dark .skill-item { background: #2a2a2a; }
   white-space: pre-wrap;
   overflow: hidden;
 }
+
+/* 拖拽区域 */
+.drop-zone {
+  position: relative;
+  border: 2px dashed transparent;
+  border-radius: 6px;
+  transition: border-color 0.2s, background 0.2s;
+}
+.drop-zone.drag-over {
+  border-color: #18a058;
+  background: rgba(24, 160, 88, 0.06);
+}
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: #18a058;
+  font-weight: 600;
+  background: rgba(24, 160, 88, 0.08);
+  border-radius: 6px;
+  pointer-events: none;
+}
+body.dark .drop-zone.drag-over { background: rgba(24, 160, 88, 0.1); }
+body.dark .drop-overlay { color: #5fb67c; background: rgba(24, 160, 88, 0.1); }
 </style>

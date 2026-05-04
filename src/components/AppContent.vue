@@ -317,6 +317,11 @@ async function handleReorder(orderedIds: string[]) {
   await store.reorderProviders(orderedIds)
 }
 
+// 拖拽重排项目顺序
+async function handleReorderProjects(orderedIds: string[]) {
+  await store.reorderActiveProjects(orderedIds)
+}
+
 // 状态栏信息
 const statusInfo = computed(() => t('right_click_hint'))
 </script>
@@ -366,6 +371,7 @@ const statusInfo = computed(() => t('right_click_hint'))
           :providers="store.providers"
           @removed="handleRemoveProject"
           @launch="handleLaunchProject"
+          @reorder="handleReorderProjects"
         />
       </div>
 
