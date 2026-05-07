@@ -28,10 +28,11 @@
         </div>
 
         <!-- 模板和 Skill 入口 -->
-        <n-divider>{{ t('templates') }} & {{ t('skills') }}</n-divider>
+        <n-divider>{{ t('templates') }} / {{ t('skills') }} / {{ t('plugins') }}</n-divider>
         <n-space>
           <n-button @click="emit('openTemplates')">{{ t('templates') }} ({{ store.templates.length }})</n-button>
           <n-button @click="emit('openSkills')">{{ t('skills') }} ({{ store.skills.length }})</n-button>
+          <n-button @click="emit('openPlugins')">{{ t('plugins') }} ({{ store.plugins.length }})</n-button>
         </n-space>
 
         <n-divider>{{ t('export_backup') }} / {{ t('import_backup') }}</n-divider>
@@ -42,6 +43,9 @@
         </n-form-item>
         <n-form-item :label="t('full_backup_include_skills')">
           <n-checkbox v-model:checked="includeSkills" />
+        </n-form-item>
+        <n-form-item :label="t('full_backup_include_plugins')">
+          <n-checkbox v-model:checked="includePlugins" />
         </n-form-item>
 
         <!-- 导出路径 -->
@@ -125,7 +129,7 @@ import { FolderOutline as folderOutlineIcon } from '@vicons/ionicons5'
 const { t } = useI18n()
 const store = useAppStore()
 const msg = useMessage()
-const emit = defineEmits<{ back: [], openTemplates: [], openSkills: [] }>()
+const emit = defineEmits<{ back: [], openTemplates: [], openSkills: [], openPlugins: [] }>()
 
 const usePassword = ref(false)
 const backupPassword = ref('')
@@ -133,6 +137,7 @@ const defaultDir = ref(store.config.defaultConfigDir || '')
 const exportPath = ref(store.config.backupExportPath || '')
 const includeTemplates = ref(true)
 const includeSkills = ref(true)
+const includePlugins = ref(true)
 
 const importStatus = ref<{ type: 'info' | 'warning' | 'success', text: string } | null>(null)
 const showPasswordModal = ref(false)
@@ -187,6 +192,7 @@ async function doExport() {
       password,
       includeTemplates: includeTemplates.value,
       includeSkills: includeSkills.value,
+      includePlugins: includePlugins.value,
       customPath: exportPath.value || null
     })
     msg.success(t('backup_export_quick_success', { path: result.path }))
@@ -213,18 +219,21 @@ async function doImport() {
     if (info.same_machine && !info.has_password) {
       importStatus.value = { type: 'info', text: t('backup_same_machine') }
       try {
-        const result = await invoke<{ providers_count: number, templates_count: number, skills_count: number }>('import_full_backup', {
+        const result = await invoke<{ providers_count: number, templates_count: number, skills_count: number, plugins_count: number }>('import_full_backup', {
           data,
           password: '',
           importTemplates: true,
-          importSkills: true
+          importSkills: true,
+          importPlugins: true
         })
         await store.loadProviders()
         await store.loadTemplates()
         await store.loadSkills()
         await store.loadTemplateBindings()
-        importStatus.value = { type: 'success', text: t('full_backup_import_success', { providers: result.providers_count, templates: result.templates_count, skills: result.skills_count }) }
-        msg.success(t('full_backup_import_success', { providers: result.providers_count, templates: result.templates_count, skills: result.skills_count }))
+        await store.loadPlugins()
+        await store.loadMarketplaces()
+        importStatus.value = { type: 'success', text: t('full_backup_import_success', { providers: result.providers_count, templates: result.templates_count, skills: result.skills_count, plugins: result.plugins_count }) }
+        msg.success(t('full_backup_import_success', { providers: result.providers_count, templates: result.templates_count, skills: result.skills_count, plugins: result.plugins_count }))
       } catch (e) {
         msg.error(String(e))
       }
@@ -254,18 +263,21 @@ async function doImportWithPassword() {
   const data = pendingBackupData.value
 
   try {
-    const result = await invoke<{ providers_count: number, templates_count: number, skills_count: number }>('import_full_backup', {
+    const result = await invoke<{ providers_count: number, templates_count: number, skills_count: number, plugins_count: number }>('import_full_backup', {
       data,
       password: importPassword.value,
       importTemplates: true,
-      importSkills: true
+      importSkills: true,
+      importPlugins: true
     })
     await store.loadProviders()
     await store.loadTemplates()
     await store.loadSkills()
     await store.loadTemplateBindings()
-    importStatus.value = { type: 'success', text: t('full_backup_import_success', { providers: result.providers_count, templates: result.templates_count, skills: result.skills_count }) }
-    msg.success(t('full_backup_import_success', { providers: result.providers_count, templates: result.templates_count, skills: result.skills_count }))
+    await store.loadPlugins()
+    await store.loadMarketplaces()
+    importStatus.value = { type: 'success', text: t('full_backup_import_success', { providers: result.providers_count, templates: result.templates_count, skills: result.skills_count, plugins: result.plugins_count }) }
+    msg.success(t('full_backup_import_success', { providers: result.providers_count, templates: result.templates_count, skills: result.skills_count, plugins: result.plugins_count }))
   } catch (e) {
     msg.error(String(e))
   }

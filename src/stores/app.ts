@@ -75,6 +75,24 @@ export interface Skill {
   updated_at: string
 }
 
+// Plugin 类型
+export interface PluginInfo {
+  id: string
+  name: string
+  marketplace: string
+  enabled: boolean
+  version?: string
+  path?: string
+}
+
+// Marketplace 类型
+export interface MarketplaceSource {
+  id: string
+  source_type: string
+  repo?: string
+  url?: string
+}
+
 // 供应商模板类型
 export interface ProviderTemplateUrl {
   label: string
@@ -110,6 +128,8 @@ export const useAppStore = defineStore('app', () => {
   const templateBindings = ref<TemplateBinding[]>([])
   const skills = ref<Skill[]>([])
   const providerTemplates = ref<ProviderTemplate[]>([])
+  const plugins = ref<PluginInfo[]>([])
+  const marketplaces = ref<MarketplaceSource[]>([])
 
   const activeInstance = () => config.value.instances.find(i => i.id === activeInstanceId.value) ?? config.value.instances[0]
 
@@ -122,6 +142,8 @@ export const useAppStore = defineStore('app', () => {
     await loadTemplateBindings()
     await loadSkills()
     await loadProviderTemplates()
+    await loadPlugins()
+    await loadMarketplaces()
   }
 
   async function loadConfig() {
@@ -266,9 +288,34 @@ export const useAppStore = defineStore('app', () => {
     await loadProviderTemplates()
   }
 
+  // Plugin 管理
+  async function loadPlugins() {
+    plugins.value = await invoke<PluginInfo[]>('get_plugins')
+  }
+
+  async function togglePlugin(id: string, enabled: boolean) {
+    await invoke('toggle_plugin', { id, enabled })
+    await loadPlugins()
+  }
+
+  // Marketplace 管理
+  async function loadMarketplaces() {
+    marketplaces.value = await invoke<MarketplaceSource[]>('get_marketplaces')
+  }
+
+  async function addMarketplace(id: string, repo: string) {
+    await invoke('add_marketplace', { id, repo })
+    await loadMarketplaces()
+  }
+
+  async function removeMarketplace(id: string) {
+    await invoke('remove_marketplace', { id })
+    await loadMarketplaces()
+  }
+
   return {
     providers, config, activeInstanceId, activeInstance,
-    activeProjects, templates, templateBindings, skills, providerTemplates,
+    activeProjects, templates, templateBindings, skills, providerTemplates, plugins, marketplaces,
     init, loadProviders, upsertProvider, deleteProvider, reorderProviders, reorderActiveProjects,
     switchProvider, saveConfig,
     injectToProject, removeActiveProject, loadActiveProjects,
@@ -281,5 +328,9 @@ export const useAppStore = defineStore('app', () => {
     loadSkills, saveSkill, deleteSkill,
     // Provider Templates
     loadProviderTemplates, saveProviderTemplate, deleteProviderTemplate,
+    // Plugin
+    loadPlugins, togglePlugin,
+    // Marketplace
+    loadMarketplaces, addMarketplace, removeMarketplace,
   }
 })

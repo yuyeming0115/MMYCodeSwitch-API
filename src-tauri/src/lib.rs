@@ -915,6 +915,213 @@ fn get_project_template(project_path: String) -> Result<Option<String>, String> 
     Ok(binding.map(|b| b.template_name.clone()))
 }
 
+// ── 插件管理 ───────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PluginInfo {
+    pub id: String,
+    pub name: String,
+    pub marketplace: String,
+    pub enabled: bool,
+    pub version: Option<String>,
+    pub path: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct MarketplaceSource {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub source_type: String,  // "github" | "npm" | "local"
+    pub repo: Option<String>,
+    pub url: Option<String>,
+}
+
+/// 获取 Claude Code 配置目录（默认 ~/.claude）
+fn claude_config_dir() -> std::path::PathBuf {
+    let cfg = config::load_app_config().ok();
+    if let Some(c) = cfg {
+        if let Some(inst) = c.instances.first() {
+            return std::path::PathBuf::from(&inst.config_dir);
+        }
+    }
+    dirs::home_dir().unwrap_or_default().join(".claude")
+}
+
+/// 读取 Claude Code settings.json
+fn read_claude_settings() -> Result<serde_json::Value, String> {
+    let path = claude_config_dir().join("settings.json");
+    if !path.exists() {
+        return Ok(serde_json::json!({}));
+    }
+    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&content).map_err(|e| e.to_string())
+}
+
+/// 保存 Claude Code settings.json
+fn save_claude_settings(settings: &serde_json::Value) -> Result<(), String> {
+    let path = claude_config_dir().join("settings.json");
+    std::fs::write(&path, serde_json::to_string_pretty(settings).unwrap_or_default())
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_plugins() -> Result<Vec<PluginInfo>, String> {
+    let settings = read_claude_settings()?;
+    let plugins_dir = claude_config_dir().join("plugins").join("cache");
+
+    // 解析 enabledPlugins
+    let enabled_plugins: HashMap<String, bool> = settings
+        .get("enabledPlugins")
+        .and_then(|v| v.as_object())
+        .map(|obj| obj.iter().map(|(k, v)| (k.clone(), v.as_bool().unwrap_or(false))).collect())
+        .unwrap_or_default();
+
+    // 扫描 plugins/cache 目录获取已下载插件
+    let mut plugins: Vec<PluginInfo> = vec![];
+
+    if plugins_dir.exists() {
+        // 遍历 marketplace 目录（如 claude-hud, claude-plugins-official）
+        for marketplace_entry in std::fs::read_dir(&plugins_dir).map_err(|e| e.to_string())? {
+            let marketplace_entry = marketplace_entry.map_err(|e| e.to_string())?;
+            let marketplace_name = marketplace_entry.file_name().to_string_lossy().to_string();
+
+            // 遍历该 marketplace 下的插件目录
+            for plugin_entry in std::fs::read_dir(marketplace_entry.path()).map_err(|e| e.to_string())? {
+                let plugin_entry = plugin_entry.map_err(|e| e.to_string())?;
+                let plugin_dir_name = plugin_entry.file_name().to_string_lossy().to_string();
+
+                // 插件 ID 格式：plugin_name@marketplace
+                let plugin_id = format!("{}@{}", plugin_dir_name, marketplace_name);
+
+                // 尝试读取 package.json 或 manifest 获取版本
+                let version = plugin_entry.path().join("package.json")
+                    .exists()
+                    .then(|| {
+                        std::fs::read_to_string(plugin_entry.path().join("package.json"))
+                            .ok()
+                            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                            .and_then(|v| v.get("version").and_then(|v| v.as_str()).map(String::from))
+                    })
+                    .flatten();
+
+                plugins.push(PluginInfo {
+                    id: plugin_id.clone(),
+                    name: plugin_dir_name.clone(),
+                    marketplace: marketplace_name.clone(),
+                    enabled: enabled_plugins.get(&plugin_id).copied().unwrap_or(false),
+                    version,
+                    path: Some(plugin_entry.path().to_string_lossy().to_string()),
+                });
+            }
+        }
+    }
+
+    // 添加 enabled 但未下载的插件（只存在于 settings.json）
+    for (id, enabled) in &enabled_plugins {
+        if !plugins.iter().any(|p| &p.id == id) {
+            // 解析 ID：plugin_name@marketplace
+            let parts: Vec<&str> = id.split('@').collect();
+            let (name, marketplace) = if parts.len() == 2 {
+                (parts[0].to_string(), parts[1].to_string())
+            } else {
+                (id.clone(), "unknown".to_string())
+            };
+            plugins.push(PluginInfo {
+                id: id.clone(),
+                name,
+                marketplace,
+                enabled: *enabled,
+                version: None,
+                path: None,
+            });
+        }
+    }
+
+    // 按 marketplace + name 排序
+    plugins.sort_by(|a, b| a.marketplace.cmp(&b.marketplace).then_with(|| a.name.cmp(&b.name)));
+
+    Ok(plugins)
+}
+
+#[tauri::command]
+fn toggle_plugin(id: String, enabled: bool) -> Result<(), String> {
+    let mut settings = read_claude_settings()?;
+
+    // 确保 enabledPlugins 存在
+    if settings.get("enabledPlugins").is_none() {
+        settings["enabledPlugins"] = serde_json::json!({});
+    }
+
+    // 更新状态
+    settings["enabledPlugins"][&id] = serde_json::json!(enabled);
+
+    save_claude_settings(&settings)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_marketplaces() -> Result<Vec<MarketplaceSource>, String> {
+    let settings = read_claude_settings()?;
+
+    let marketplaces: Vec<MarketplaceSource> = settings
+        .get("extraKnownMarketplaces")
+        .and_then(|v| v.as_object())
+        .map(|obj| {
+            obj.iter().map(|(id, val)| {
+                let source = val.get("source");
+                MarketplaceSource {
+                    id: id.clone(),
+                    source_type: source
+                        .and_then(|s| s.get("source").and_then(|t| t.as_str()))
+                        .unwrap_or("unknown")
+                        .to_string(),
+                    repo: source
+                        .and_then(|s| s.get("repo").and_then(|r| r.as_str()))
+                        .map(String::from),
+                    url: None,
+                }
+            }).collect()
+        })
+        .unwrap_or_default();
+
+    Ok(marketplaces)
+}
+
+#[tauri::command]
+fn add_marketplace(id: String, repo: String) -> Result<(), String> {
+    let mut settings = read_claude_settings()?;
+
+    // 确保 extraKnownMarketplaces 存在
+    if settings.get("extraKnownMarketplaces").is_none() {
+        settings["extraKnownMarketplaces"] = serde_json::json!({});
+    }
+
+    settings["extraKnownMarketplaces"][&id] = serde_json::json!({
+        "source": {
+            "source": "github",
+            "repo": repo
+        }
+    });
+
+    save_claude_settings(&settings)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_marketplace(id: String) -> Result<(), String> {
+    let mut settings = read_claude_settings()?;
+
+    if let Some(obj) = settings.get("extraKnownMarketplaces").and_then(|v| v.as_object()) {
+        let mut marketplaces = obj.clone();
+        marketplaces.remove(&id);
+        settings["extraKnownMarketplaces"] = serde_json::Value::Object(marketplaces);
+    }
+
+    save_claude_settings(&settings)?;
+    Ok(())
+}
+
 // ── Skill 模板管理 ───────────────────────────────────────────────────────────────
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Skill {
@@ -1331,7 +1538,7 @@ pub struct FullBackupResult {
 }
 
 #[tauri::command]
-fn export_full_backup(password: String, include_templates: bool, include_skills: bool, custom_path: Option<String>) -> Result<FullBackupResult, String> {
+fn export_full_backup(password: String, include_templates: bool, include_skills: bool, include_plugins: bool, custom_path: Option<String>) -> Result<FullBackupResult, String> {
     // 1. 导出 providers（加密）
     let providers = config::load_providers().map_err(|e| e.to_string())?;
     let machine_key = config::get_or_create_key().map_err(|e| e.to_string())?;
@@ -1358,11 +1565,21 @@ fn export_full_backup(password: String, include_templates: bool, include_skills:
         vec![]
     };
 
-    // 4. 收集应用配置
+    // 4. 收集插件配置
+    let (enabled_plugins, extra_marketplaces) = if include_plugins {
+        let settings = read_claude_settings()?;
+        let plugins = settings.get("enabledPlugins").cloned().unwrap_or(serde_json::json!({}));
+        let marketplaces = settings.get("extraKnownMarketplaces").cloned().unwrap_or(serde_json::json!({}));
+        (plugins, marketplaces)
+    } else {
+        (serde_json::json!({}), serde_json::json!({}))
+    };
+
+    // 5. 收集应用配置
     let app_config = config::load_app_config().map_err(|e| e.to_string())?;
     let bindings = get_template_bindings().unwrap_or_default();
 
-    // 5. 构建完整备份 JSON
+    // 6. 构建完整备份 JSON
     let full_backup = serde_json::json!({
         "providers_encrypted": providers_encrypted,
         "templates": templates.iter().map(|t| serde_json::json!({
@@ -1379,6 +1596,8 @@ fn export_full_backup(password: String, include_templates: bool, include_skills:
             "defaultConfigDir": app_config.default_config_dir,
         },
         "template_bindings": bindings,
+        "enabledPlugins": enabled_plugins,
+        "extraKnownMarketplaces": extra_marketplaces,
     });
     let backup_json = serde_json::to_string(&full_backup).map_err(|e| e.to_string())?;
 
@@ -1421,6 +1640,7 @@ fn export_full_backup(password: String, include_templates: bool, include_skills:
     let mut included: Vec<String> = vec!["providers".to_string()];
     if include_templates { included.push("templates".to_string()); }
     if include_skills { included.push("skills".to_string()); }
+    if include_plugins { included.push("plugins".to_string()); }
 
     Ok(FullBackupResult {
         path: filepath.to_string_lossy().to_string(),
@@ -1434,6 +1654,7 @@ pub struct FullImportResult {
     pub providers_count: usize,
     pub templates_count: usize,
     pub skills_count: usize,
+    pub plugins_count: usize,
     pub same_machine: bool,
     pub need_password: bool,
 }
@@ -1444,7 +1665,7 @@ fn check_full_backup_file(data: Vec<u8>) -> Result<BackupInfo, String> {
 }
 
 #[tauri::command]
-fn import_full_backup(data: Vec<u8>, password: String, import_templates: bool, import_skills: bool) -> Result<FullImportResult, String> {
+fn import_full_backup(data: Vec<u8>, password: String, import_templates: bool, import_skills: bool, import_plugins: bool) -> Result<FullImportResult, String> {
     if data.len() < 39 {
         return Err("文件格式无效".to_string());
     }
@@ -1599,10 +1820,61 @@ fn import_full_backup(data: Vec<u8>, password: String, import_templates: bool, i
             .map_err(|e| e.to_string())?;
     }
 
+    // 导入插件配置
+    let plugins_count = if import_plugins {
+        let mut count = 0;
+        let mut settings = read_claude_settings()?;
+
+        // 导入 enabledPlugins
+        if let Some(enabled_plugins) = backup.get("enabledPlugins") {
+            if let Some(obj) = enabled_plugins.as_object() {
+                if !obj.is_empty() {
+                    count += obj.len();
+                    // 合并：保留现有的，添加新的
+                    let existing = settings.get("enabledPlugins")
+                        .and_then(|v| v.as_object())
+                        .cloned()
+                        .unwrap_or_default();
+                    let mut merged: serde_json::Map<String, serde_json::Value> = existing;
+                    for (k, v) in obj {
+                        merged.insert(k.clone(), v.clone());
+                    }
+                    settings["enabledPlugins"] = serde_json::Value::Object(merged);
+                }
+            }
+        }
+
+        // 导入 extraKnownMarketplaces
+        if let Some(extra_marketplaces) = backup.get("extraKnownMarketplaces") {
+            if let Some(obj) = extra_marketplaces.as_object() {
+                if !obj.is_empty() {
+                    // 合并：保留现有的，添加新的
+                    let existing = settings.get("extraKnownMarketplaces")
+                        .and_then(|v| v.as_object())
+                        .cloned()
+                        .unwrap_or_default();
+                    let mut merged: serde_json::Map<String, serde_json::Value> = existing;
+                    for (k, v) in obj {
+                        merged.insert(k.clone(), v.clone());
+                    }
+                    settings["extraKnownMarketplaces"] = serde_json::Value::Object(merged);
+                }
+            }
+        }
+
+        if count > 0 {
+            save_claude_settings(&settings)?;
+        }
+        count
+    } else {
+        0
+    };
+
     Ok(FullImportResult {
         providers_count,
         templates_count,
         skills_count,
+        plugins_count,
         same_machine,
         need_password: has_password,
     })
@@ -2204,6 +2476,12 @@ pub fn run() {
             delete_provider_template,
             refresh_template_models,
             get_cached_models,
+        // Plugin management
+            get_plugins,
+            toggle_plugin,
+            get_marketplaces,
+            add_marketplace,
+            remove_marketplace,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

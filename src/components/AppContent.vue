@@ -13,6 +13,7 @@ import Settings from './Settings.vue'
 import ProjectList from './ProjectList.vue'
 import TemplateManager from './TemplateManager.vue'
 import SkillManager from './SkillManager.vue'
+import PluginManager from './PluginManager.vue'
 
 const { t } = useI18n()
 const store = useAppStore()
@@ -20,7 +21,7 @@ const msg = useMessage()
 const dialog = useDialog()
 
 // 当前页面
-const currentPage = ref<'main' | 'settings' | 'form' | 'templates' | 'skills'>('main')
+const currentPage = ref<'main' | 'settings' | 'form' | 'templates' | 'skills' | 'plugins'>('main')
 const editingProvider = ref<Provider | undefined>()
 const isDark = defineModel<boolean>('isDark', { default: false })
 
@@ -136,6 +137,10 @@ function openTemplates() {
 
 function openSkills() {
   currentPage.value = 'skills'
+}
+
+function openPlugins() {
+  currentPage.value = 'plugins'
 }
 
 /// 多项目模式核心流程：点击 Provider → 弹文件夹选择器 → 检测重复 → 确认 → 注入 → 启动CLI
@@ -378,6 +383,7 @@ const statusInfo = computed(() => t('right_click_hint'))
       <footer v-show="!compactMode" class="toolbar">
         <n-button size="large" secondary @click="currentPage = 'templates'">📝 {{ t('templates') }}</n-button>
         <n-button size="large" secondary @click="currentPage = 'skills'">🔧 {{ t('skills') }}</n-button>
+        <n-button size="large" secondary @click="currentPage = 'plugins'">🔌 {{ t('plugins') }}</n-button>
         <n-button size="large" secondary @click="isDark = !isDark" class="always-visible">{{ isDark ? '☀️' : '🌙' }}</n-button>
         <n-button size="large" secondary @click="currentPage = 'settings'" class="always-visible">⚙️</n-button>
       </footer>
@@ -401,6 +407,7 @@ const statusInfo = computed(() => t('right_click_hint'))
       @back="goBack"
       @openTemplates="openTemplates"
       @openSkills="openSkills"
+      @openPlugins="openPlugins"
     />
 
     <!-- 编辑/添加供应商页面 -->
@@ -420,6 +427,12 @@ const statusInfo = computed(() => t('right_click_hint'))
     <!-- Skill 管理页面 -->
     <SkillManager
       v-if="currentPage === 'skills'"
+      @back="goBack"
+    />
+
+    <!-- 插件管理页面 -->
+    <PluginManager
+      v-if="currentPage === 'plugins'"
       @back="goBack"
     />
   </div>
