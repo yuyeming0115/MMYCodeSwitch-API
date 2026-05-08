@@ -45,7 +45,10 @@
           <n-checkbox v-model:checked="includeSkills" />
         </n-form-item>
         <n-form-item :label="t('full_backup_include_plugins')">
-          <n-checkbox v-model:checked="includePlugins" />
+          <n-space align="center">
+            <n-checkbox v-model:checked="includePlugins" />
+            <span v-if="includePlugins" class="form-hint">{{ t('full_backup_plugin_hint') }}</span>
+          </n-space>
         </n-form-item>
 
         <!-- 导出路径 -->
@@ -340,4 +343,6 @@ body.dark .hint-text { color: #999; }
 body.dark .import-status.info { background: #2a3a5a; color: #70c0e8; }
 body.dark .import-status.warning { background: #3a3520; color: #f0a020; }
 body.dark .import-status.success { background: #2a3a30; color: #18a058; }
+.form-hint { color: #999; font-size: 11px; margin-left: 4px; }
+body.dark .form-hint { color: #777; }
 </style>

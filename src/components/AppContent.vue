@@ -14,6 +14,7 @@ import ProjectList from './ProjectList.vue'
 import TemplateManager from './TemplateManager.vue'
 import SkillManager from './SkillManager.vue'
 import PluginManager from './PluginManager.vue'
+import TokenStats from './TokenStats.vue'
 
 const { t } = useI18n()
 const store = useAppStore()
@@ -21,7 +22,7 @@ const msg = useMessage()
 const dialog = useDialog()
 
 // 当前页面
-const currentPage = ref<'main' | 'settings' | 'form' | 'templates' | 'skills' | 'plugins'>('main')
+const currentPage = ref<'main' | 'settings' | 'form' | 'templates' | 'skills' | 'plugins' | 'usage-stats'>('main')
 const editingProvider = ref<Provider | undefined>()
 const isDark = defineModel<boolean>('isDark', { default: false })
 
@@ -381,6 +382,7 @@ const statusInfo = computed(() => t('right_click_hint'))
       </div>
 
       <footer v-show="!compactMode" class="toolbar">
+        <n-button size="large" secondary @click="currentPage = 'usage-stats'">📊 {{ t('usage_stats') }}</n-button>
         <n-button size="large" secondary @click="currentPage = 'templates'">📝 {{ t('templates') }}</n-button>
         <n-button size="large" secondary @click="currentPage = 'skills'">🔧 {{ t('skills') }}</n-button>
         <n-button size="large" secondary @click="currentPage = 'plugins'">🔌 {{ t('plugins') }}</n-button>
@@ -433,6 +435,12 @@ const statusInfo = computed(() => t('right_click_hint'))
     <!-- 插件管理页面 -->
     <PluginManager
       v-if="currentPage === 'plugins'"
+      @back="goBack"
+    />
+
+    <!-- Token 统计页面 -->
+    <TokenStats
+      v-if="currentPage === 'usage-stats'"
       @back="goBack"
     />
   </div>

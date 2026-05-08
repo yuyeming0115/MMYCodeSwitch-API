@@ -4,6 +4,8 @@ use tauri::{
     Manager,
 };
 
+use chrono::Timelike;
+
 mod config;
 mod crypto;
 mod inject;
@@ -401,6 +403,7 @@ pub struct BackupInfo {
     pub version: u8,
     pub same_machine: bool,
     pub has_password: bool,
+    pub is_full_backup: bool,  // v3 及以上版本为完整备份（可能含插件文件）
 }
 
 #[tauri::command]
@@ -436,6 +439,7 @@ fn check_backup_file(data: Vec<u8>) -> Result<BackupInfo, String> {
         version,
         same_machine,
         has_password,
+        is_full_backup: version >= BACKUP_VERSION_V3,
     })
 }
 
@@ -936,6 +940,39 @@ pub struct MarketplaceSource {
     pub url: Option<String>,
 }
 
+// ── Token 使用统计类型 ───────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct UsageStats {
+    pub sessions: usize,
+    pub messages: usize,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub active_days: usize,
+    pub current_streak: usize,
+    pub longest_streak: usize,
+    pub peak_hour: usize,
+    pub favorite_model: String,
+    pub daily_data: Vec<DailyUsage>,
+    pub model_data: Vec<ModelUsage>,
+}
+
+#[derive(Serialize)]
+pub struct DailyUsage {
+    pub date: String,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub messages: usize,
+}
+
+#[derive(Serialize)]
+pub struct ModelUsage {
+    pub model: String,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub percentage: f64,
+}
+
 /// 获取 Claude Code 配置目录（默认 ~/.claude）
 fn claude_config_dir() -> std::path::PathBuf {
     let cfg = config::load_app_config().ok();
@@ -963,6 +1000,62 @@ fn save_claude_settings(settings: &serde_json::Value) -> Result<(), String> {
     std::fs::write(&path, serde_json::to_string_pretty(settings).unwrap_or_default())
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn base64_encode(data: &[u8]) -> String {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    STANDARD.encode(data)
+}
+
+fn base64_decode(s: &str) -> Result<Vec<u8>, base64::DecodeError> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    STANDARD.decode(s)
+}
+
+/// 递归收集目录下所有文件（排除 node_modules 和 .git）
+fn collect_dir_files(base: &std::path::PathBuf, current: &std::path::PathBuf, files: &mut serde_json::Map<String, serde_json::Value>) -> std::io::Result<()> {
+    let entries = std::fs::read_dir(current)?;
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        let relative = path.strip_prefix(base)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        // 排除 node_modules 和 .git
+        if relative.contains("node_modules") || relative.contains(".git") { continue; }
+        if path.is_dir() {
+            collect_dir_files(base, &path, files)?;
+        } else {
+            let content = std::fs::read(&path)?;
+            files.insert(relative, serde_json::Value::String(base64_encode(&content)));
+        }
+    }
+    Ok(())
+}
+
+/// 收集 plugins/cache 目录下所有插件的文件内容（Base64 编码）
+/// 返回 { "marketplace/plugin": { "path/to/file": "<base64>" } }
+fn collect_plugin_files(plugins_cache_dir: &std::path::PathBuf) -> Result<serde_json::Value, String> {
+    if !plugins_cache_dir.exists() {
+        return Ok(serde_json::json!({}));
+    }
+    let mut archive = serde_json::Map::new();
+    for marketplace_entry in std::fs::read_dir(plugins_cache_dir).map_err(|e| e.to_string())? {
+        let marketplace_dir = marketplace_entry.map_err(|e| e.to_string())?.path();
+        if !marketplace_dir.is_dir() { continue; }
+        let marketplace_name = marketplace_dir.file_name().unwrap().to_string_lossy().to_string();
+        for plugin_entry in std::fs::read_dir(&marketplace_dir).map_err(|e| e.to_string())? {
+            let plugin_dir = plugin_entry.map_err(|e| e.to_string())?.path();
+            if !plugin_dir.is_dir() { continue; }
+            let plugin_name = plugin_dir.file_name().unwrap().to_string_lossy().to_string();
+            let plugin_key = format!("{}/{}", marketplace_name, plugin_name);
+            let mut files = serde_json::Map::new();
+            collect_dir_files(&plugin_dir, &plugin_dir, &mut files).map_err(|e| e.to_string())?;
+            archive.insert(plugin_key, serde_json::Value::Object(files));
+        }
+    }
+    Ok(serde_json::Value::Object(archive))
 }
 
 #[tauri::command]
@@ -1120,6 +1213,258 @@ fn remove_marketplace(id: String) -> Result<(), String> {
 
     save_claude_settings(&settings)?;
     Ok(())
+}
+
+// ── Token 使用统计 ───────────────────────────────────────────────────────────────
+
+/// 解析 JSONL 中的一行，如果是 assistant 消息且包含 usage 信息则提取
+fn parse_usage_line(line: &str) -> Option<(String, u64, u64, String)> {
+    // (model, input_tokens, output_tokens, date_str)
+    let v: serde_json::Value = serde_json::from_str(line).ok()?;
+    // 只统计 assistant 消息（顶层 type）
+    if v.get("type").and_then(|t| t.as_str()) != Some("assistant") {
+        return None;
+    }
+    // 只统计 CLI 入口
+    let entrypoint = v.get("entrypoint").and_then(|e| e.as_str()).unwrap_or("");
+    if entrypoint != "cli" {
+        return None;
+    }
+    // model 和 usage 在 message 对象内
+    let msg = v.get("message")?;
+    let model = msg.get("model")?.as_str()?.to_string();
+    let usage = msg.get("usage")?;
+    let input_tokens = usage.get("input_tokens")?.as_u64()?;
+    let output_tokens = usage.get("output_tokens")?.as_u64()?;
+    // 提取日期（从 timestamp）
+    let date_str = v.get("timestamp")
+        .and_then(|t| t.as_str())
+        .map(|t| t.split('T').next().unwrap_or(""))
+        .unwrap_or("")
+        .to_string();
+    Some((model, input_tokens, output_tokens, date_str))
+}
+
+/// 计算连续天数
+fn calc_streaks(dates: &[String]) -> (usize, usize) {
+    if dates.is_empty() {
+        return (0, 0);
+    }
+    let mut sorted: Vec<String> = dates.iter().cloned().collect();
+    sorted.sort();
+    sorted.dedup();
+
+    // 转换为日期
+    let today = chrono::Utc::now().date_naive();
+    let date_list: Vec<chrono::NaiveDate> = sorted
+        .iter()
+        .filter_map(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+        .collect();
+
+    if date_list.is_empty() {
+        return (0, 0);
+    }
+
+    // 最长连续
+    let mut longest = 1;
+    let mut current = 1;
+    for i in 1..date_list.len() {
+        if date_list[i] - date_list[i - 1] == chrono::Duration::days(1) {
+            current += 1;
+            longest = longest.max(current);
+        } else {
+            current = 1;
+        }
+    }
+
+    // 当前连续（从今天往前数）
+    let mut streak = 0;
+    let mut check_date = today;
+    let date_set: std::collections::HashSet<chrono::NaiveDate> = date_list.into_iter().collect();
+    while date_set.contains(&check_date) {
+        streak += 1;
+        check_date -= chrono::Duration::days(1);
+    }
+
+    (streak, longest)
+}
+
+#[tauri::command]
+fn get_usage_stats(period: String) -> Result<UsageStats, String> {
+    use std::collections::HashMap;
+
+    let config_dir = claude_config_dir();
+    let projects_dir = config_dir.join("projects");
+    if !projects_dir.exists() {
+        return Ok(UsageStats {
+            sessions: 0, messages: 0, input_tokens: 0, output_tokens: 0,
+            active_days: 0, current_streak: 0, longest_streak: 0,
+            peak_hour: 0, favorite_model: String::new(),
+            daily_data: vec![], model_data: vec![],
+        });
+    }
+
+    // 计算时间范围
+    let now = chrono::Utc::now();
+    let cutoff = match period.as_str() {
+        "7d" => now - chrono::Duration::days(7),
+        "30d" => now - chrono::Duration::days(30),
+        _ => chrono::DateTime::<chrono::Utc>::MIN_UTC, // "all"
+    };
+
+    // 聚合数据结构
+    let mut sessions: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut messages: usize = 0;
+    let mut total_input: u64 = 0;
+    let mut total_output: u64 = 0;
+    let mut hour_counts: HashMap<usize, usize> = HashMap::new();
+    let mut model_input: HashMap<String, u64> = HashMap::new();
+    let mut model_output: HashMap<String, u64> = HashMap::new();
+    let mut daily_input: HashMap<String, u64> = HashMap::new();
+    let mut daily_output: HashMap<String, u64> = HashMap::new();
+    let mut daily_messages: HashMap<String, usize> = HashMap::new();
+    let mut all_dates: Vec<String> = Vec::new();
+
+    // 遍历所有项目目录
+    for project_entry in std::fs::read_dir(&projects_dir).map_err(|e| e.to_string())? {
+        let project_dir = project_entry.map_err(|e| e.to_string())?.path();
+        if !project_dir.is_dir() { continue; }
+
+        // 遍历项目下的 JSONL 文件（包括子目录中的）
+        for jsonl_entry in walk_jsonl_files(&project_dir) {
+            let content = std::fs::read_to_string(&jsonl_entry).map_err(|e| e.to_string())?;
+            for line in content.lines() {
+                let line = line.trim();
+                if line.is_empty() { continue; }
+
+                // 提取 sessionId（用于去重）
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+                    if let Some(sid) = v.get("sessionId").and_then(|s| s.as_str()) {
+                        sessions.insert(sid.to_string());
+                    }
+                    // 提取 timestamp 用于时间过滤
+                    if let Some(ts) = v.get("timestamp").and_then(|t| t.as_str()) {
+                        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
+                            if dt < cutoff { continue; }
+                        }
+                    }
+                }
+
+                // 解析 usage
+                if let Some((model, input, output, date)) = parse_usage_line(line) {
+                    messages += 1;
+                    total_input += input;
+                    total_output += output;
+
+                    // 提取小时
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+                        if let Some(ts) = v.get("timestamp").and_then(|t| t.as_str()) {
+                            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
+                                let hour = dt.hour() as usize;
+                                *hour_counts.entry(hour).or_insert(0) += 1;
+                            }
+                        }
+                    }
+
+                    // 按日期聚合
+                    if !date.is_empty() {
+                        *daily_input.entry(date.clone()).or_insert(0) += input;
+                        *daily_output.entry(date.clone()).or_insert(0) += output;
+                        *daily_messages.entry(date.clone()).or_insert(0) += 1;
+                        all_dates.push(date.clone());
+                    }
+
+                    // 按模型聚合
+                    *model_input.entry(model.clone()).or_insert(0) += input;
+                    *model_output.entry(model.clone()).or_insert(0) += output;
+                }
+            }
+        }
+    }
+
+    // 计算活跃天数
+    all_dates.sort();
+    all_dates.dedup();
+    let active_days = all_dates.len();
+
+    // 计算连续天数
+    let (current_streak, longest_streak) = calc_streaks(&all_dates);
+
+    // 计算最活跃小时
+    let peak_hour = hour_counts.iter()
+        .max_by_key(|(_, &count)| count)
+        .map(|(&hour, _)| hour)
+        .unwrap_or(0);
+
+    // 计算最常用模型（按 token 总量）
+    let mut model_totals: HashMap<String, u64> = HashMap::new();
+    for (model, &input) in &model_input {
+        *model_totals.entry(model.clone()).or_insert(0) += input;
+        *model_totals.entry(model.clone()).or_insert(0) += model_output.get(model).copied().unwrap_or(0);
+    }
+    let favorite_model = model_totals.iter()
+        .max_by_key(|(_, &total)| total)
+        .map(|(model, _)| model.clone())
+        .unwrap_or_default();
+
+    // 构建每日数据
+    let mut daily_data: Vec<DailyUsage> = daily_input.iter().map(|(date, &input)| {
+        DailyUsage {
+            date: date.clone(),
+            input_tokens: input,
+            output_tokens: daily_output.get(date).copied().unwrap_or(0),
+            messages: daily_messages.get(date).copied().unwrap_or(0),
+        }
+    }).collect();
+    daily_data.sort_by(|a, b| a.date.cmp(&b.date));
+
+    // 构建模型数据
+    let total_tokens = total_input + total_output;
+    let mut model_data: Vec<ModelUsage> = model_input.iter().map(|(model, &input)| {
+        let output = model_output.get(model).copied().unwrap_or(0);
+        let pct = if total_tokens > 0 {
+            ((input + output) as f64 / total_tokens as f64) * 100.0
+        } else {
+            0.0
+        };
+        ModelUsage {
+            model: model.clone(),
+            input_tokens: input,
+            output_tokens: output,
+            percentage: (pct * 10.0).round() / 10.0, // 保留一位小数
+        }
+    }).collect();
+    model_data.sort_by(|a, b| b.input_tokens.cmp(&a.input_tokens)); // 按输入量降序
+
+    Ok(UsageStats {
+        sessions: sessions.len(),
+        messages,
+        input_tokens: total_input,
+        output_tokens: total_output,
+        active_days,
+        current_streak,
+        longest_streak,
+        peak_hour,
+        favorite_model,
+        daily_data,
+        model_data,
+    })
+}
+
+/// 递归查找目录下所有 JSONL 文件
+fn walk_jsonl_files(dir: &std::path::PathBuf) -> Vec<std::path::PathBuf> {
+    let mut results = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                results.extend(walk_jsonl_files(&path));
+            } else if path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+                results.push(path);
+            }
+        }
+    }
+    results
 }
 
 // ── Skill 模板管理 ───────────────────────────────────────────────────────────────
@@ -1565,14 +1910,16 @@ fn export_full_backup(password: String, include_templates: bool, include_skills:
         vec![]
     };
 
-    // 4. 收集插件配置
-    let (enabled_plugins, extra_marketplaces) = if include_plugins {
+    // 4. 收集插件配置 + 插件文件
+    let (enabled_plugins, extra_marketplaces, plugins_archive) = if include_plugins {
         let settings = read_claude_settings()?;
         let plugins = settings.get("enabledPlugins").cloned().unwrap_or(serde_json::json!({}));
         let marketplaces = settings.get("extraKnownMarketplaces").cloned().unwrap_or(serde_json::json!({}));
-        (plugins, marketplaces)
+        let plugins_cache_dir = claude_config_dir().join("plugins").join("cache");
+        let archive = collect_plugin_files(&plugins_cache_dir)?;
+        (plugins, marketplaces, archive)
     } else {
-        (serde_json::json!({}), serde_json::json!({}))
+        (serde_json::json!({}), serde_json::json!({}), serde_json::json!({}))
     };
 
     // 5. 收集应用配置
@@ -1598,6 +1945,7 @@ fn export_full_backup(password: String, include_templates: bool, include_skills:
         "template_bindings": bindings,
         "enabledPlugins": enabled_plugins,
         "extraKnownMarketplaces": extra_marketplaces,
+        "plugins_archive": plugins_archive,
     });
     let backup_json = serde_json::to_string(&full_backup).map_err(|e| e.to_string())?;
 
@@ -1858,6 +2206,29 @@ fn import_full_backup(data: Vec<u8>, password: String, import_templates: bool, i
                         merged.insert(k.clone(), v.clone());
                     }
                     settings["extraKnownMarketplaces"] = serde_json::Value::Object(merged);
+                }
+            }
+        }
+
+        // 还原插件文件（从 plugins_archive）
+        if let Some(archive) = backup.get("plugins_archive") {
+            if let Some(obj) = archive.as_object() {
+                let target_dir = claude_config_dir().join("plugins").join("cache");
+                std::fs::create_dir_all(&target_dir).map_err(|e| e.to_string())?;
+                for (plugin_key, file_map) in obj {
+                    if let Some(files) = file_map.as_object() {
+                        for (relative_path, content_b64) in files {
+                            if let Some(b64) = content_b64.as_str() {
+                                let decoded = base64_decode(b64).map_err(|e| e.to_string())?;
+                                let target_path = target_dir.join(plugin_key).join(relative_path);
+                                std::fs::create_dir_all(target_path.parent().unwrap()).map_err(|e| e.to_string())?;
+                                // 文件已存在则跳过
+                                if !target_path.exists() {
+                                    std::fs::write(&target_path, &decoded).map_err(|e| e.to_string())?;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2482,6 +2853,7 @@ pub fn run() {
             get_marketplaces,
             add_marketplace,
             remove_marketplace,
+            get_usage_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
