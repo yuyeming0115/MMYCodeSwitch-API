@@ -152,7 +152,7 @@ function onDragEnd() {
   flex-wrap: wrap;
   gap: 14px;
   padding: 8px 0;
-  align-content: flex-start;
+  align-content: center;
   justify-content: center;
   user-select: none;
 }

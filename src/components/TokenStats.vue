@@ -133,16 +133,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { RefreshOutline as RefreshOutlineIcon } from '@vicons/ionicons5'
 import { useMessage } from 'naive-ui'
 import * as echarts from 'echarts'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const { t, locale } = useI18n()
 const msg = useMessage()
 const emit = defineEmits<{ back: [] }>()
+const appWindow = getCurrentWindow()
 
 interface UsageStats {
   sessions: number
@@ -316,8 +318,15 @@ function refreshChart() {
   })
 }
 
-onMounted(() => {
-  loadStats()
+onMounted(async () => {
+  await loadStats()
+
+  // 监听窗口大小变化，自动调整图表
+  await appWindow.onResized(() => {
+    if (chartInstance && activeTab.value === 'models') {
+      chartInstance.resize()
+    }
+  })
 })
 
 onUnmounted(() => {

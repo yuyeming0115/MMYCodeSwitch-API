@@ -181,41 +181,48 @@ function handleLaunch(proj: ActiveProject) {
   padding-top: 0;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .project-cards {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 55vh;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-content: flex-start;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: 4px;
+  padding: 4px 0;
 }
 
 .empty-state {
   text-align: center;
-  padding: 24px 0;
+  padding: 16px 0;
   color: #bbb;
 }
 .empty-state p {
-  margin: 8px 0 0;
-  font-size: 13px;
+  margin: 4px 0 0;
+  font-size: 12px;
 }
-.empty-icon { font-size: 28px; }
+.empty-icon { font-size: 24px; }
 
 /* ====== 卡片主体 ====== */
 .proj-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
-  border-radius: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
   border: 1.5px solid #e8e8e8;
   background: #fff;
   transition: border-color .2s, box-shadow .2s;
-  gap: 10px;
+  gap: 8px;
   cursor: grab;
+  min-width: 200px;
+  max-width: 320px;
+  flex: 1 1 auto;
 }
 .proj-card:hover {
   border-color: #c0c0c0;
@@ -230,8 +237,8 @@ body.dark .proj-card:hover { border-color: #555; }
 /* ====== 左侧供应商图标（图片/首字母） ====== */
 .proj-icon {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -248,7 +255,7 @@ body.dark .proj-card:hover { border-color: #555; }
 }
 /* 无图标时（显示首字母 + 渐变底色） */
 .proj-icon.no-img {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   color: #fff;
   line-height: 1;
@@ -272,8 +279,8 @@ body.dark .proj-name { color: #ddd; }
 .proj-meta {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 4px;
+  gap: 8px;
+  margin-top: 2px;
   font-size: 11px;
 }
 .proj-provider {
@@ -282,13 +289,9 @@ body.dark .proj-name { color: #ddd; }
 }
 .proj-time { color: #bbb; }
 
+/* 隐藏路径显示，通过 tooltip 查看 */
 .proj-path {
-  font-size: 11px;
-  color: #aaa;
-  margin-top: 3px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: none;
 }
 
 /* ====== 右侧按钮组 ====== */
@@ -296,20 +299,20 @@ body.dark .proj-name { color: #ddd; }
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   opacity: 0;
   transition: opacity .15s;
 }
 .proj-card:hover .action-btns { opacity: 1; }
 
 .launch-btn {
-  width: 28px; height: 28px;
-  border-radius: 7px;
+  width: 24px; height: 24px;
+  border-radius: 6px;
   border: none;
   background: #18a058;
   color: #fff;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -322,13 +325,13 @@ body.dark .proj-name { color: #ddd; }
 .launch-btn:active { transform: scale(0.95); }
 
 .remove-btn {
-  width: 24px; height: 24px;
-  border-radius: 6px;
+  width: 20px; height: 20px;
+  border-radius: 5px;
   border: none;
   background: transparent;
   color: #ccc;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -349,7 +352,10 @@ body.dark .remove-btn:hover { background: #3a1515; }
 .ghost {
   opacity: 0.2;
   border: 2px dashed #4A90D9;
-  border-radius: 12px;
+  border-radius: 10px;
+  min-width: 200px;
+  max-width: 320px;
+  flex: 1 1 auto;
 }
 .chosen {
   box-shadow: 0 4px 16px rgba(24,160,88,0.2);

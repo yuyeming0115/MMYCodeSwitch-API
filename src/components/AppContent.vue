@@ -352,6 +352,30 @@ const statusInfo = computed(() => t('right_click_hint'))
 
     <!-- 主页面 -->
     <div v-if="currentPage === 'main'" class="page-main">
+      <!-- 顶部工具栏 -->
+      <div v-show="!compactMode" class="toolbar">
+        <n-button size="large" secondary @click="currentPage = 'usage-stats'" title="Token统计">📊</n-button>
+        <n-button size="large" secondary @click="currentPage = 'templates'" title="规则模板">📝</n-button>
+        <n-button size="large" secondary @click="currentPage = 'skills'" title="Skills">🔧</n-button>
+        <n-button size="large" secondary @click="currentPage = 'plugins'" title="插件">🔌</n-button>
+        <n-button size="large" secondary @click="isDark = !isDark" class="always-visible" :title="isDark ? '浅色模式' : '深色模式'">{{ isDark ? '☀️' : '🌙' }}</n-button>
+        <n-button size="large" secondary @click="currentPage = 'settings'" class="always-visible" title="设置">⚙️</n-button>
+      </div>
+
+      <!-- 顶部状态栏 -->
+      <div v-show="!compactMode" class="statusbar">
+        <span class="statusbar-left">{{ statusInfo }}</span>
+        <n-button
+          v-if="store.activeProjects.length > 0"
+          size="tiny"
+          type="error"
+          secondary
+          class="statusbar-right"
+          @click="handleCleanupProjects"
+        >🧹 {{ t('cleanup_all_projects') }}</n-button>
+      </div>
+
+      <!-- 内容区域 -->
       <div class="content">
         <ProviderGrid
           :providers="store.providers"
@@ -380,27 +404,6 @@ const statusInfo = computed(() => t('right_click_hint'))
           @reorder="handleReorderProjects"
         />
       </div>
-
-      <footer v-show="!compactMode" class="toolbar">
-        <n-button size="large" secondary @click="currentPage = 'usage-stats'">📊 {{ t('usage_stats') }}</n-button>
-        <n-button size="large" secondary @click="currentPage = 'templates'">📝 {{ t('templates') }}</n-button>
-        <n-button size="large" secondary @click="currentPage = 'skills'">🔧 {{ t('skills') }}</n-button>
-        <n-button size="large" secondary @click="currentPage = 'plugins'">🔌 {{ t('plugins') }}</n-button>
-        <n-button size="large" secondary @click="isDark = !isDark" class="always-visible">{{ isDark ? '☀️' : '🌙' }}</n-button>
-        <n-button size="large" secondary @click="currentPage = 'settings'" class="always-visible">⚙️</n-button>
-      </footer>
-
-      <footer v-show="!compactMode" class="statusbar">
-        <span class="statusbar-left">{{ statusInfo }}</span>
-        <n-button
-          v-if="store.activeProjects.length > 0"
-          size="tiny"
-          type="error"
-          secondary
-          class="statusbar-right"
-          @click="handleCleanupProjects"
-        >🧹 {{ t('cleanup_all_projects') }}</n-button>
-      </footer>
     </div>
 
     <!-- 设置页面 -->
@@ -461,8 +464,7 @@ const statusInfo = computed(() => t('right_click_hint'))
 }
 .content {
   flex: 1;
-  min-height: 0; /* 关键：允许 flex 子项收缩 */
-  overflow-y: auto;
+  min-height: 0;
   padding: 8px 16px 0;
   display: flex;
   flex-direction: column;
@@ -479,6 +481,7 @@ const statusInfo = computed(() => t('right_click_hint'))
   cursor: pointer;
   user-select: none;
   transition: background 0.15s;
+  flex-shrink: 0;
 }
 .project-section-toggle:hover {
   background: rgba(128,128,128,0.05);
@@ -504,10 +507,9 @@ body.dark .toggle-title { color: #aaa; }
   justify-content: center;
   gap: 8px;
   padding: 10px 16px;
-  border-top: 1px solid #eee;
-  flex-shrink: 0;
+  border-bottom: 1px solid #eee;
   background: #fafafa;
-  min-height: 52px;
+  flex-shrink: 0;
 }
 .toolbar-left {
   display: flex;
@@ -532,7 +534,7 @@ body.dark .toggle-title { color: #aaa; }
   background: #f5f5f5;
   flex-shrink: 0;
   gap: 8px;
-  min-height: 32px;
+  border-bottom: 1px solid #eee;
 }
 .statusbar-left {
   flex: 1;
@@ -550,12 +552,13 @@ body.dark .toggle-title { color: #aaa; }
 
 /* 深色模式适配 */
 body.dark .toolbar {
-  border-top-color: #333;
+  border-bottom-color: #333;
   background: #242424;
 }
 body.dark .statusbar {
   color: #888;
   background: #1a1a1a;
+  border-bottom-color: #333;
 }
 
 /* 响应式：窄屏时按钮变小 */
