@@ -469,38 +469,36 @@ async function handleReorderProjects(orderedIds: string[]) {
 body.dark .project-section-toggle { border-top-color: #333; }
 body.dark .toggle-title { color: #aaa; }
 
-/* 卡片式工具栏按钮 */
+/* 简洁扁平工具栏（参考 LobeHub 风格） */
 .toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 10px 16px;
+  gap: 6px;
+  padding: 8px 12px;
   border-bottom: 1px solid #eee;
   background: #fafafa;
   flex-shrink: 0;
 }
 .toolbar-btn {
-  width: 52px;
-  height: 52px;
-  border-radius: 12px;
-  border: 2px solid #e0e0e0;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
-  background: #fff;
+  transition: background 0.15s;
+  background: transparent;
   user-select: none;
 }
 .toolbar-btn:hover {
-  border-color: #18a058;
-  box-shadow: 0 3px 10px rgba(24,160,88,0.16);
-  background: #f0faf5;
+  background: rgba(0,0,0,0.06);
 }
 .toolbar-icon {
-  font-size: 22px;
+  font-size: 18px;
   line-height: 1;
 }
 
@@ -509,19 +507,14 @@ body.dark .toolbar {
   border-bottom-color: #333;
   background: #242424;
 }
-body.dark .toolbar-btn {
-  background: #2a2a2a;
-  border-color: #444;
-}
 body.dark .toolbar-btn:hover {
-  border-color: #18a058;
-  background: #1a3a28;
+  background: rgba(255,255,255,0.08);
 }
 
-/* 响应式：窄屏时按钮变小 */
+/* 响应式：窄屏时保持紧凑 */
 @media (max-width: 400px) {
-  .toolbar { gap: 8px; padding: 8px 12px; }
-  .toolbar-btn { width: 44px; height: 44px; }
-  .toolbar-icon { font-size: 18px; }
+  .toolbar { gap: 4px; padding: 6px 8px; }
+  .toolbar-btn { width: 32px; height: 32px; }
+  .toolbar-icon { font-size: 16px; }
 }
 </style>
