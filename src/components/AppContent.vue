@@ -128,7 +128,6 @@ const activeProviderId = computed(() => activeInstance.value?.active_provider_id
 const injecting = ref(false)  // 注入进行中，防止重复点击
 const projectListCollapsed = ref(false)  // 项目列表折叠状态
 const compactMode = ref(false)  // 精简模式状态
-const providerGridRef = ref<InstanceType<typeof ProviderGrid> | null>(null)
 
 // 窗口尺寸配置
 const NORMAL_SIZE = { width: 510, height: 620 }
