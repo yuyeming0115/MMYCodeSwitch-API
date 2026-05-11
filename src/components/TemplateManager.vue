@@ -12,7 +12,13 @@
       <n-divider>{{ t('templates') }}</n-divider>
       <div v-if="store.templates.length === 0" class="empty-hint">{{ t('none') }}</div>
       <div v-else class="template-list">
-        <div v-for="tpl in store.templates" class="template-item" :class="{ builtin: tpl.builtin }" :key="tpl.name">
+        <div
+          v-for="tpl in store.templates"
+          class="template-item"
+          :class="{ builtin: tpl.builtin }"
+          :key="tpl.name"
+          @click="!tpl.builtin && editTemplate(tpl)"
+        >
           <div class="template-header">
             <span class="template-name">
               {{ tpl.name }}
@@ -21,11 +27,10 @@
             <n-space>
               <template v-if="tpl.builtin">
                 <n-button v-if="isAdopted(tpl.name)" size="small" disabled type="success">{{ t('template_adopted') }}</n-button>
-                <n-button v-else size="small" type="primary" @click="doAdopt(tpl.name)">{{ t('template_adopt') }}</n-button>
+                <n-button v-else size="small" type="primary" @click.stop="doAdopt(tpl.name)">{{ t('template_adopt') }}</n-button>
               </template>
               <template v-else>
-                <n-button size="small" @click="editTemplate(tpl)">{{ t('edit') }}</n-button>
-                <n-button size="small" type="error" @click="confirmDelete(tpl.name)">{{ t('delete') }}</n-button>
+                <n-button size="small" type="error" @click.stop="confirmDelete(tpl.name)">{{ t('delete') }}</n-button>
               </template>
             </n-space>
           </div>
@@ -234,8 +239,22 @@ body.dark .hint-text { color: #999; }
   padding: 8px 12px;
   background: #f5f5f5;
   border-radius: 6px;
+  cursor: default;
+}
+.template-item:not(.builtin) {
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  border: 1px solid transparent;
+}
+.template-item:not(.builtin):hover {
+  background: #f0f0f0;
+  border-color: #18a058;
 }
 body.dark .template-item, body.dark .binding-item { background: #2a2a2a; }
+body.dark .template-item:not(.builtin):hover {
+  background: #333;
+  border-color: #18a058;
+}
 .template-header { display: flex; align-items: center; justify-content: space-between; width: 100%; }
 .template-name { font-weight: 600; }
 .binding-path { font-size: 12px; color: #666; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }

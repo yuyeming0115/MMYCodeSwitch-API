@@ -12,13 +12,15 @@
       <n-divider>{{ t('skills') }}</n-divider>
       <div v-if="store.skills.length === 0" class="empty-hint">{{ t('none') }}</div>
       <div v-else class="skill-list">
-        <div v-for="skill in store.skills" class="skill-item" :key="skill.name">
+        <div
+          v-for="skill in store.skills"
+          class="skill-item"
+          :key="skill.name"
+          @click="editSkill(skill)"
+        >
           <div class="skill-header">
             <span class="skill-name">{{ skill.name }}</span>
-            <n-space>
-              <n-button size="small" @click="editSkill(skill)">{{ t('edit') }}</n-button>
-              <n-button size="small" type="error" @click="confirmDelete(skill.name)">{{ t('delete') }}</n-button>
-            </n-space>
+            <n-button size="small" type="error" @click.stop="confirmDelete(skill.name)">{{ t('delete') }}</n-button>
           </div>
           <pre class="skill-preview">{{ skill.content.slice(0, 100) }}...</pre>
         </div>
@@ -195,8 +197,19 @@ body.dark .hint-text { color: #999; }
   padding: 12px;
   background: #f5f5f5;
   border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  border: 1px solid transparent;
+}
+.skill-item:hover {
+  background: #f0f0f0;
+  border-color: #18a058;
 }
 body.dark .skill-item { background: #2a2a2a; }
+body.dark .skill-item:hover {
+  background: #333;
+  border-color: #18a058;
+}
 .skill-header { display: flex; align-items: center; justify-content: space-between; }
 .skill-name { font-weight: 600; }
 .skill-preview {
