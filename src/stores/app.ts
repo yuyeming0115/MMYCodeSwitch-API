@@ -93,6 +93,14 @@ export interface MarketplaceSource {
   url?: string
 }
 
+// 备份文件类型
+export interface BackupFile {
+  filename: string
+  path: string
+  size: number
+  created_at: string
+}
+
 // 供应商模板类型
 export interface ProviderTemplateUrl {
   label: string
@@ -313,6 +321,15 @@ export const useAppStore = defineStore('app', () => {
     await loadMarketplaces()
   }
 
+  // Backup file management
+  async function loadBackupFiles() {
+    return await invoke<BackupFile[]>('get_backup_files')
+  }
+
+  async function deleteBackupFile(path: string) {
+    await invoke('delete_backup_file', { path })
+  }
+
   return {
     providers, config, activeInstanceId, activeInstance,
     activeProjects, templates, templateBindings, skills, providerTemplates, plugins, marketplaces,
@@ -332,5 +349,7 @@ export const useAppStore = defineStore('app', () => {
     loadPlugins, togglePlugin,
     // Marketplace
     loadMarketplaces, addMarketplace, removeMarketplace,
+    // Backup files
+    loadBackupFiles, deleteBackupFile,
   }
 })

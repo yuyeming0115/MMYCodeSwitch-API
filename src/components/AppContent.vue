@@ -28,6 +28,7 @@ const isDark = defineModel<boolean>('isDark', { default: false })
 
 const appWindow = getCurrentWindow()
 let resizeTimeout: ReturnType<typeof setTimeout> | null = null
+let hourlyBackupTimer: ReturnType<typeof setInterval> | null = null
 
 /// 全局窗口拖拽：按住空白区域即可拖动窗口（macOS 透明窗口 data-tauri-drag-region 不可靠时的兜底）
 function startWindowDrag(e: MouseEvent) {
@@ -69,11 +70,33 @@ onMounted(async () => {
       } catch (_) {}
     }, 500)
   })
+
+  // 启动每小时自动备份
+  startHourlyBackup()
 })
 
 onUnmounted(() => {
   if (resizeTimeout) clearTimeout(resizeTimeout)
+  if (hourlyBackupTimer) clearInterval(hourlyBackupTimer)
 })
+
+// 每小时自动备份（不含插件文件，减小体积）
+function startHourlyBackup() {
+  hourlyBackupTimer = setInterval(async () => {
+    try {
+      await invoke('export_full_backup', {
+        password: '',
+        includeTemplates: true,
+        includeSkills: true,
+        includePlugins: false,
+        customPath: null
+      })
+      console.log('[AutoBackup] 每小时备份完成')
+    } catch (e) {
+      console.error('[AutoBackup] 每小时备份失败:', e)
+    }
+  }, 60 * 60 * 1000) // 1小时
+}
 
 // 监听深浅模式变化，自动保存
 watch(isDark, async (val) => {
@@ -249,56 +272,6 @@ async function handleLaunchProject(projectPath: string) {
   }
 }
 
-/// 一键清理所有未运行 Claude CLI 的项目
-async function handleCleanupProjects() {
-  if (store.activeProjects.length === 0) {
-    msg.info(t('cleanup_none'))
-    return
-  }
-
-  const loadingMsg = msg.loading(t('cleanup_checking'), { duration: 0 })
-
-  try {
-    // 1. 获取所有项目路径
-    const projectPaths = store.activeProjects.map(p => p.project_path)
-
-    // 2. 调用后端检测哪些项目有活跃的 Claude CLI
-    const activeProcesses = await invoke<{ project_path: string; pid: number }[]>('check_active_claude_processes', { projectPaths })
-
-    loadingMsg.destroy()
-
-    // 3. 找出活跃项目路径
-    const activePaths = new Set(activeProcesses.map(p => normalizePath(p.project_path)))
-
-    // 4. 找出待清理项目（不在活跃列表中的）
-    const toRemove = store.activeProjects.filter(proj => !activePaths.has(normalizePath(proj.project_path)))
-
-    if (toRemove.length === 0) {
-      msg.success(t('cleanup_none'))
-      return
-    }
-
-    // 5. 弹出确认框
-    dialog.warning({
-      title: t('cleanup_confirm_title'),
-      content: t('cleanup_confirm_msg', { inactive: toRemove.length, active: activePaths.size }),
-      positiveText: t('confirm'),
-      negativeText: t('cancel'),
-      onPositiveClick: async () => {
-        // 6. 执行清理
-        for (const proj of toRemove) {
-          await store.removeActiveProject(proj.id)
-        }
-        msg.success(t('cleanup_success', { n: toRemove.length }))
-      },
-    })
-  } catch (e) {
-    loadingMsg.destroy()
-    console.error('[handleCleanupProjects] 检测失败:', e)
-    msg.error('检测失败: ' + (e instanceof Error ? e.message : String(e)))
-  }
-}
-
 // 工具函数：规范化路径（统一 / 分隔，防御空值）
 function normalizePath(path: string | undefined | null): string {
   if (!path) return ''
@@ -327,9 +300,6 @@ async function handleReorder(orderedIds: string[]) {
 async function handleReorderProjects(orderedIds: string[]) {
   await store.reorderActiveProjects(orderedIds)
 }
-
-// 状态栏信息
-const statusInfo = computed(() => t('right_click_hint'))
 </script>
 
 <template>
@@ -352,27 +322,26 @@ const statusInfo = computed(() => t('right_click_hint'))
 
     <!-- 主页面 -->
     <div v-if="currentPage === 'main'" class="page-main">
-      <!-- 顶部工具栏 -->
+      <!-- 顶部工具栏（卡片式图标按钮） -->
       <div v-show="!compactMode" class="toolbar">
-        <n-button size="large" secondary @click="currentPage = 'usage-stats'" title="Token统计">📊</n-button>
-        <n-button size="large" secondary @click="currentPage = 'templates'" title="规则模板">📝</n-button>
-        <n-button size="large" secondary @click="currentPage = 'skills'" title="Skills">🔧</n-button>
-        <n-button size="large" secondary @click="currentPage = 'plugins'" title="插件">🔌</n-button>
-        <n-button size="large" secondary @click="isDark = !isDark" class="always-visible" :title="isDark ? '浅色模式' : '深色模式'">{{ isDark ? '☀️' : '🌙' }}</n-button>
-        <n-button size="large" secondary @click="currentPage = 'settings'" class="always-visible" title="设置">⚙️</n-button>
-      </div>
-
-      <!-- 顶部状态栏 -->
-      <div v-show="!compactMode" class="statusbar">
-        <span class="statusbar-left">{{ statusInfo }}</span>
-        <n-button
-          v-if="store.activeProjects.length > 0"
-          size="tiny"
-          type="error"
-          secondary
-          class="statusbar-right"
-          @click="handleCleanupProjects"
-        >🧹 {{ t('cleanup_all_projects') }}</n-button>
+        <div class="toolbar-btn" @click="currentPage = 'usage-stats'" title="Token统计">
+          <div class="toolbar-icon">📊</div>
+        </div>
+        <div class="toolbar-btn" @click="currentPage = 'templates'" title="规则模板">
+          <div class="toolbar-icon">📝</div>
+        </div>
+        <div class="toolbar-btn" @click="currentPage = 'skills'" title="Skills">
+          <div class="toolbar-icon">🔧</div>
+        </div>
+        <div class="toolbar-btn" @click="currentPage = 'plugins'" title="插件">
+          <div class="toolbar-icon">🔌</div>
+        </div>
+        <div class="toolbar-btn" @click="isDark = !isDark" :title="isDark ? '浅色模式' : '深色模式'">
+          <div class="toolbar-icon">{{ isDark ? '☀️' : '🌙' }}</div>
+        </div>
+        <div class="toolbar-btn" @click="currentPage = 'settings'" title="设置">
+          <div class="toolbar-icon">⚙️</div>
+        </div>
       </div>
 
       <!-- 内容区域 -->
@@ -500,54 +469,39 @@ const statusInfo = computed(() => t('right_click_hint'))
 body.dark .project-section-toggle { border-top-color: #333; }
 body.dark .toggle-title { color: #aaa; }
 
+/* 卡片式工具栏按钮 */
 .toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   padding: 10px 16px;
   border-bottom: 1px solid #eee;
   background: #fafafa;
   flex-shrink: 0;
 }
-.toolbar-left {
+.toolbar-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  border: 2px solid #e0e0e0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  flex: 1;
-  justify-content: center;
-}
-.toolbar-right {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.statusbar {
-  display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  padding: 6px 16px;
-  font-size: 11px;
-  color: #888;
-  background: #f5f5f5;
-  flex-shrink: 0;
-  gap: 8px;
-  border-bottom: 1px solid #eee;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  background: #fff;
+  user-select: none;
 }
-.statusbar-left {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.toolbar-btn:hover {
+  border-color: #18a058;
+  box-shadow: 0 3px 10px rgba(24,160,88,0.16);
+  background: #f0faf5;
 }
-.statusbar-right {
-  flex-shrink: 0;
-}
-.always-visible {
-  flex-shrink: 0;
-  order: 100;  /* 放到最后，确保始终可见 */
+.toolbar-icon {
+  font-size: 22px;
+  line-height: 1;
 }
 
 /* 深色模式适配 */
@@ -555,15 +509,19 @@ body.dark .toolbar {
   border-bottom-color: #333;
   background: #242424;
 }
-body.dark .statusbar {
-  color: #888;
-  background: #1a1a1a;
-  border-bottom-color: #333;
+body.dark .toolbar-btn {
+  background: #2a2a2a;
+  border-color: #444;
+}
+body.dark .toolbar-btn:hover {
+  border-color: #18a058;
+  background: #1a3a28;
 }
 
 /* 响应式：窄屏时按钮变小 */
 @media (max-width: 400px) {
-  .toolbar { gap: 6px; padding: 8px 12px; }
-  .toolbar .n-button { font-size: 12px; }
+  .toolbar { gap: 8px; padding: 8px 12px; }
+  .toolbar-btn { width: 44px; height: 44px; }
+  .toolbar-icon { font-size: 18px; }
 }
 </style>

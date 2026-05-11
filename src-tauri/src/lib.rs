@@ -1882,8 +1882,8 @@ pub struct FullBackupResult {
     pub included: Vec<String>,  // 包含的内容类型
 }
 
-#[tauri::command]
-fn export_full_backup(password: String, include_templates: bool, include_skills: bool, include_plugins: bool, custom_path: Option<String>) -> Result<FullBackupResult, String> {
+/// 内部备份函数（用于自动备份，无需 command 序列化开销）
+fn export_full_backup_internal(password: String, include_templates: bool, include_skills: bool, include_plugins: bool, custom_path: Option<String>) -> Result<FullBackupResult, String> {
     // 1. 导出 providers（加密）
     let providers = config::load_providers().map_err(|e| e.to_string())?;
     let machine_key = config::get_or_create_key().map_err(|e| e.to_string())?;
@@ -1949,7 +1949,7 @@ fn export_full_backup(password: String, include_templates: bool, include_skills:
     });
     let backup_json = serde_json::to_string(&full_backup).map_err(|e| e.to_string())?;
 
-    // 6. 加密整个备份
+    // 加密整个备份
     let backup_encrypted = if password.is_empty() {
         crypto::encrypt(&backup_json, &machine_key).map_err(|e| e.to_string())?
     } else {
@@ -1969,7 +1969,7 @@ fn export_full_backup(password: String, include_templates: bool, include_skills:
     }
     output.extend_from_slice(backup_encrypted.as_bytes());
 
-    // 8. 写入文件 - 支持自定义路径
+    // 8. 写入文件
     let backups_dir = if let Some(path) = custom_path {
         if path.is_empty() {
             config::mmycs_dir().join("backups")
@@ -1985,6 +1985,9 @@ fn export_full_backup(password: String, include_templates: bool, include_skills:
     let filepath = backups_dir.join(&filename);
     std::fs::write(&filepath, &output).map_err(|e| e.to_string())?;
 
+    // 9. 自动轮转备份文件（保持最多7个）
+    let _ = rotate_backup_files();
+
     let mut included: Vec<String> = vec!["providers".to_string()];
     if include_templates { included.push("templates".to_string()); }
     if include_skills { included.push("skills".to_string()); }
@@ -1995,6 +1998,129 @@ fn export_full_backup(password: String, include_templates: bool, include_skills:
         filename,
         included,
     })
+}
+
+#[tauri::command]
+fn export_full_backup(password: String, include_templates: bool, include_skills: bool, include_plugins: bool, custom_path: Option<String>) -> Result<FullBackupResult, String> {
+    export_full_backup_internal(password, include_templates, include_skills, include_plugins, custom_path)
+}
+
+// ── 备份文件管理 ───────────────────────────────────────────────────────────
+
+const MAX_BACKUP_FILES: usize = 7;
+
+#[derive(Serialize, Clone)]
+pub struct BackupFile {
+    pub filename: String,
+    pub path: String,
+    pub size: u64,
+    pub created_at: String,
+}
+
+fn backups_dir() -> std::path::PathBuf {
+    config::mmycs_dir().join("backups")
+}
+
+#[tauri::command]
+fn get_backup_files() -> Result<Vec<BackupFile>, String> {
+    let dir = backups_dir();
+    if !dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut files: Vec<BackupFile> = vec![];
+    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("mmycs") {
+            let metadata = entry.metadata().map_err(|e| e.to_string())?;
+            let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+            // 从文件名提取创建时间：mmycs_full_backup_YYYYMMDD_HHMMSS.mmycs
+            let created_at = extract_backup_time(&filename);
+            files.push(BackupFile {
+                filename,
+                path: path.to_string_lossy().to_string(),
+                size: metadata.len(),
+                created_at,
+            });
+        }
+    }
+
+    // 按创建时间降序排序（最新的在前）
+    files.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    Ok(files)
+}
+
+fn extract_backup_time(filename: &str) -> String {
+    // 尝试从文件名解析时间：mmycs_full_backup_20260511_143052.mmycs
+    if let Some(time_part) = filename.strip_prefix("mmycs_full_backup_").and_then(|s| s.strip_suffix(".mmycs")) {
+        // YYYYMMDD_HHMMSS 格式
+        if time_part.len() == 15 {
+            let date = &time_part[0..8];
+            let time = &time_part[9..15];
+            if let (Ok(y), Ok(m), Ok(d)) = (date[0..4].parse::<u32>(), date[4..6].parse::<u32>(), date[6..8].parse::<u32>()) {
+                if let (Ok(h), Ok(min), Ok(s)) = (time[0..2].parse::<u32>(), time[2..4].parse::<u32>(), time[4..6].parse::<u32>()) {
+                    return format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", y, m, d, h, min, s);
+                }
+            }
+        }
+    }
+    // 兼容旧格式：mmycs_backup_YYYYMMDD_HHMMSS.mmycs
+    if let Some(time_part) = filename.strip_prefix("mmycs_backup_").and_then(|s| s.strip_suffix(".mmycs")) {
+        if time_part.len() == 15 {
+            let date = &time_part[0..8];
+            let time = &time_part[9..15];
+            if let (Ok(y), Ok(m), Ok(d)) = (date[0..4].parse::<u32>(), date[4..6].parse::<u32>(), date[6..8].parse::<u32>()) {
+                if let (Ok(h), Ok(min), Ok(s)) = (time[0..2].parse::<u32>(), time[2..4].parse::<u32>(), time[4..6].parse::<u32>()) {
+                    return format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", y, m, d, h, min, s);
+                }
+            }
+        }
+    }
+    "未知时间".to_string()
+}
+
+fn rotate_backup_files() -> Result<usize, String> {
+    let dir = backups_dir();
+    if !dir.exists() {
+        return Ok(0);
+    }
+
+    // 获取所有备份文件，按时间排序
+    let mut files: Vec<std::path::PathBuf> = vec![];
+    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("mmycs") {
+            files.push(path);
+        }
+    }
+
+    // 按文件名排序（文件名包含时间戳，新文件名更大）
+    files.sort_by(|a, b| {
+        let a_name = a.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let b_name = b.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        b_name.cmp(a_name) // 降序，最新的在前
+    });
+
+    // 删除超出限制的旧文件
+    let mut deleted = 0;
+    while files.len() > MAX_BACKUP_FILES {
+        let old_file = files.pop().unwrap(); // 取最旧的
+        if let Err(e) = std::fs::remove_file(&old_file) {
+            eprintln!("删除旧备份失败: {}", e);
+        } else {
+            deleted += 1;
+        }
+    }
+
+    Ok(deleted)
+}
+
+#[tauri::command]
+fn delete_backup_file(path: String) -> Result<(), String> {
+    std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -2762,7 +2888,7 @@ pub fn run() {
                     }
                 }
 
-                // 监听窗口关闭事件：阻止默认关闭 → 保存状态 → 隐藏到托盘
+                // 监听窗口关闭事件：阻止默认关闭 → 自动备份 → 保存状态 → 隐藏到托盘
                 let win_clone = win.clone();
                 let path_clone = state_path.clone();
                 win.on_window_event(move |event| {
@@ -2770,7 +2896,16 @@ pub fn run() {
                         // ★ 关键：阻止默认关闭行为
                         api.prevent_close();
 
-                        // 1. 保存窗口状态
+                        // 1. 自动备份（静默执行，不含插件文件以减小体积）
+                        let _ = export_full_backup_internal(
+                            "".to_string(),
+                            true,   // include_templates
+                            true,   // include_skills
+                            false,  // include_plugins
+                            None,   // custom_path
+                        ).map_err(|e| eprintln!("auto backup failed: {}", e));
+
+                        // 2. 保存窗口状态
                         if let Ok(pos) = win_clone.outer_position() {
                             if let Ok(size) = win_clone.outer_size() {
                                 let mut state = if path_clone.exists() {
@@ -2785,7 +2920,7 @@ pub fn run() {
                                 let _ = std::fs::write(&path_clone, serde_json::to_string_pretty(&state).unwrap_or_default());
                             }
                         }
-                        // 2. 隐藏到托盘
+                        // 3. 隐藏到托盘
                         let _ = win_clone.hide().map_err(|e| eprintln!("hide failed: {}", e));
                     }
                 });
@@ -2818,6 +2953,9 @@ pub fn run() {
             export_full_backup,
             import_full_backup,
             check_full_backup_file,
+            // Backup file management
+            get_backup_files,
+            delete_backup_file,
             fetch_models,
             test_provider,
             detect_instances,

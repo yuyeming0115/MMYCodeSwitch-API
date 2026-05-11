@@ -243,4 +243,12 @@ export default {
   period_total_tokens: '所选时段共消耗约 {tokens} tokens',
   select_platform: '选择平台',
   all_platforms: '全部',
+  // 备份文件管理
+  backup_files: '备份文件',
+  backup_files_hint: '自动保留最近 7 个备份文件',
+  backup_no_files: '暂无备份文件',
+  backup_delete_confirm_title: '确认删除备份',
+  backup_delete_success: '备份已删除',
+  backup_restore: '恢复',
+  backup_restoring: '正在恢复备份...',
 }

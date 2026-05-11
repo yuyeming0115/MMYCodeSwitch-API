@@ -243,4 +243,12 @@ export default {
   period_total_tokens: 'Total ~{tokens} tokens in selected period',
   select_platform: 'Select Platform',
   all_platforms: 'All',
+  // Backup file management
+  backup_files: 'Backup Files',
+  backup_files_hint: 'Keeps the most recent 7 backup files',
+  backup_no_files: 'No backup files',
+  backup_delete_confirm_title: 'Confirm Delete Backup',
+  backup_delete_success: 'Backup deleted',
+  backup_restore: 'Restore',
+  backup_restoring: 'Restoring backup...',
 }
