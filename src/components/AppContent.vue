@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch, onUnmounted } from 'vue'
+import { ref, onMounted, computed, watch, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useMessage, useDialog } from 'naive-ui'
+import { useMessage, useDialog, NIcon } from 'naive-ui'
 import { useAppStore, type Provider } from '../stores/app'
 import { i18n } from '../i18n'
-import { getCurrentWindow, PhysicalSize } from '@tauri-apps/api/window'
+import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import ProviderGrid from './ProviderGrid.vue'
@@ -15,6 +15,15 @@ import TemplateManager from './TemplateManager.vue'
 import SkillManager from './SkillManager.vue'
 import PluginManager from './PluginManager.vue'
 import TokenStats from './TokenStats.vue'
+import {
+  StatsChartOutline,
+  DocumentTextOutline,
+  BuildOutline,
+  ExtensionPuzzleOutline,
+  SunnyOutline,
+  MoonOutline,
+  SettingsOutline
+} from '@vicons/ionicons5'
 
 const { t } = useI18n()
 const store = useAppStore()
@@ -57,8 +66,12 @@ onMounted(async () => {
     if (saved && typeof saved.compactMode === 'boolean') {
       compactMode.value = saved.compactMode
       // 根据精简模式设置窗口大小
-      const size = saved.compactMode ? COMPACT_SIZE : NORMAL_SIZE
-      await appWindow.setSize(new PhysicalSize(size.width, size.height))
+      if (saved.compactMode) {
+        const height = await calcCompactHeight()
+        await appWindow.setSize(new LogicalSize(NORMAL_SIZE.width, height))
+      } else {
+        await appWindow.setSize(new LogicalSize(NORMAL_SIZE.width, NORMAL_SIZE.height))
+      }
     }
   } catch (_) { /* 首次运行无状态文件 */ }
 
@@ -115,19 +128,58 @@ const activeProviderId = computed(() => activeInstance.value?.active_provider_id
 const injecting = ref(false)  // 注入进行中，防止重复点击
 const projectListCollapsed = ref(false)  // 项目列表折叠状态
 const compactMode = ref(false)  // 精简模式状态
+const providerGridRef = ref<InstanceType<typeof ProviderGrid> | null>(null)
 
 // 窗口尺寸配置
 const NORMAL_SIZE = { width: 510, height: 620 }
-const COMPACT_SIZE = { width: 510, height: 360 }
+
+/// 计算精简模式下窗口自适应高度：标题栏 + ProviderGrid 实际内容高度 + 边距
+async function calcCompactHeight(): Promise<number> {
+  await nextTick()
+  // 测量 ProviderGrid 的实际渲染高度
+  const gridEl = document.querySelector('.grid.compact') as HTMLElement | null
+  if (gridEl) {
+    const gridHeight = gridEl.scrollHeight
+    // 标题栏 36px + content padding-top 8px + grid 内容 + 底部边距 8px
+    return 36 + 8 + gridHeight + 8
+  }
+  // fallback：如果测量不到，使用固定值
+  return 360
+}
+
+/// 精简模式下自适应调整窗口大小
+async function resizeToCompact() {
+  if (!compactMode.value) return
+  try {
+    const pos = await appWindow.outerPosition()
+    const height = await calcCompactHeight()
+    await appWindow.setSize(new LogicalSize(NORMAL_SIZE.width, height))
+    await invoke('save_window_state', { x: pos.x, y: pos.y, width: NORMAL_SIZE.width, height, isDark: isDark.value, compactMode: true })
+  } catch (_) {}
+}
 
 // 监听精简模式变化，自动调整窗口大小
 watch(compactMode, async (val) => {
   try {
     const pos = await appWindow.outerPosition()
-    const size = val ? COMPACT_SIZE : NORMAL_SIZE
-    await appWindow.setSize(new PhysicalSize(size.width, size.height))
-    await invoke('save_window_state', { x: pos.x, y: pos.y, width: size.width, height: size.height, isDark: isDark.value, compactMode: val })
+    if (val) {
+      // 精简模式：自适应缩放
+      const height = await calcCompactHeight()
+      await appWindow.setSize(new LogicalSize(NORMAL_SIZE.width, height))
+      await invoke('save_window_state', { x: pos.x, y: pos.y, width: NORMAL_SIZE.width, height, isDark: isDark.value, compactMode: val })
+    } else {
+      // 普通模式：恢复固定尺寸
+      await appWindow.setSize(new LogicalSize(NORMAL_SIZE.width, NORMAL_SIZE.height))
+      await invoke('save_window_state', { x: pos.x, y: pos.y, width: NORMAL_SIZE.width, height: NORMAL_SIZE.height, isDark: isDark.value, compactMode: val })
+    }
   } catch (_) {}
+})
+
+// 精简模式下供应商列表变化时，自适应调整窗口大小
+watch(() => store.providers.length, async () => {
+  if (compactMode.value) {
+    await resizeToCompact()
+  }
 })
 
 async function toggleMax() {
@@ -330,25 +382,25 @@ async function handleReorderProjects(orderedIds: string[]) {
 
     <!-- 主页面 -->
     <div v-if="currentPage === 'main'" class="page-main">
-      <!-- 顶部工具栏（卡片式图标按钮） -->
+      <!-- 顶部工具栏（简洁矢量图标） -->
       <div v-show="!compactMode" class="toolbar">
         <div class="toolbar-btn" @click="currentPage = 'usage-stats'" title="Token统计">
-          <div class="toolbar-icon">📊</div>
+          <n-icon :size="20"><StatsChartOutline /></n-icon>
         </div>
         <div class="toolbar-btn" @click="currentPage = 'templates'" title="规则模板">
-          <div class="toolbar-icon">📝</div>
+          <n-icon :size="20"><DocumentTextOutline /></n-icon>
         </div>
         <div class="toolbar-btn" @click="currentPage = 'skills'" title="Skills">
-          <div class="toolbar-icon">🔧</div>
+          <n-icon :size="20"><BuildOutline /></n-icon>
         </div>
         <div class="toolbar-btn" @click="currentPage = 'plugins'" title="插件">
-          <div class="toolbar-icon">🔌</div>
+          <n-icon :size="20"><ExtensionPuzzleOutline /></n-icon>
         </div>
         <div class="toolbar-btn" @click="isDark = !isDark" :title="isDark ? '浅色模式' : '深色模式'">
-          <div class="toolbar-icon">{{ isDark ? '☀️' : '🌙' }}</div>
+          <n-icon :size="20"><component :is="isDark ? SunnyOutline : MoonOutline" /></n-icon>
         </div>
         <div class="toolbar-btn" @click="currentPage = 'settings'" title="设置">
-          <div class="toolbar-icon">⚙️</div>
+          <n-icon :size="20"><SettingsOutline /></n-icon>
         </div>
       </div>
 
@@ -505,9 +557,8 @@ body.dark .toggle-title { color: #aaa; }
 .toolbar-btn:hover {
   background: rgba(0,0,0,0.06);
 }
-.toolbar-icon {
-  font-size: 18px;
-  line-height: 1;
+.toolbar-btn svg {
+  color: #555;
 }
 
 /* 深色模式适配 */
@@ -518,11 +569,13 @@ body.dark .toolbar {
 body.dark .toolbar-btn:hover {
   background: rgba(255,255,255,0.08);
 }
+body.dark .toolbar-btn svg {
+  color: #aaa;
+}
 
 /* 响应式：窄屏时保持紧凑 */
 @media (max-width: 400px) {
   .toolbar { gap: 4px; padding: 6px 8px; }
   .toolbar-btn { width: 32px; height: 32px; }
-  .toolbar-icon { font-size: 16px; }
 }
 </style>
