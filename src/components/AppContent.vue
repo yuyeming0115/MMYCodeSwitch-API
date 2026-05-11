@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useMessage, useDialog } from 'naive-ui'
 import { useAppStore, type Provider } from '../stores/app'
 import { i18n } from '../i18n'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { getCurrentWindow, PhysicalSize } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import ProviderGrid from './ProviderGrid.vue'
@@ -48,7 +48,7 @@ onMounted(async () => {
   await store.init()
   i18n.global.locale.value = store.config.language as 'zh' | 'en'
 
-  // 恢复深浅色模式和精简模式状态
+  // 恢复深浅色模式和精简模式状态，同时调整窗口大小
   try {
     const saved = await invoke<{ isDark?: boolean; compactMode?: boolean } | null>('get_window_state') as any
     if (saved && typeof saved.isDark === 'boolean') {
@@ -56,6 +56,9 @@ onMounted(async () => {
     }
     if (saved && typeof saved.compactMode === 'boolean') {
       compactMode.value = saved.compactMode
+      // 根据精简模式设置窗口大小
+      const size = saved.compactMode ? COMPACT_SIZE : NORMAL_SIZE
+      await appWindow.setSize(new PhysicalSize(size.width, size.height))
     }
   } catch (_) { /* 首次运行无状态文件 */ }
 
@@ -113,11 +116,16 @@ const injecting = ref(false)  // 注入进行中，防止重复点击
 const projectListCollapsed = ref(false)  // 项目列表折叠状态
 const compactMode = ref(false)  // 精简模式状态
 
-// 监听精简模式变化，自动保存
+// 窗口尺寸配置
+const NORMAL_SIZE = { width: 510, height: 620 }
+const COMPACT_SIZE = { width: 510, height: 360 }
+
+// 监听精简模式变化，自动调整窗口大小
 watch(compactMode, async (val) => {
   try {
     const pos = await appWindow.outerPosition()
-    const size = await appWindow.outerSize()
+    const size = val ? COMPACT_SIZE : NORMAL_SIZE
+    await appWindow.setSize(new PhysicalSize(size.width, size.height))
     await invoke('save_window_state', { x: pos.x, y: pos.y, width: size.width, height: size.height, isDark: isDark.value, compactMode: val })
   } catch (_) {}
 })
