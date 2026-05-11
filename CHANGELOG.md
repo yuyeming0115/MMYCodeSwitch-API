@@ -1,5 +1,15 @@
 # 更新日志
 
+## v4.5.0 (2026-05-11)
+
+### 安全改进
+- **API Key 防泄露**：项目级配置改用 `settings.local.json`（遵循 Claude Code 官方本地配置规范，避免被 git 追踪）
+- **解绑自动清理**：解绑项目时自动清除 `settings.local.json` 中的 API Key 字段
+- **归档脱敏**：会话归档中的 `ANTHROPIC_AUTH_TOKEN` 仅保留前8位，其余用 `***` 替代
+- **模板残留清理**：解绑模板时自动删除 `.claude/CLAUDE.md`
+
+---
+
 ## v4.1.0 (2026-05-11)
 
 ### 新增功能

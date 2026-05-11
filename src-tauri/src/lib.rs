@@ -221,8 +221,11 @@ fn remove_active_project(id: String) -> Result<(), String> {
     cfg.active_projects.retain(|p| p.id != id);
     config::save_app_config(&cfg).map_err(|e| e.to_string())?;
 
-    // 清理项目中的 CLAUDE.md 标记块（静默失败，不阻塞主流程）
+    // 清理项目中的 CLAUDE.md 标记块 + settings.local.json（静默失败，不阻塞主流程）
     if let Some(path) = project_path {
+        if let Err(e) = crate::inject::clean_project_settings(&path) {
+            eprintln!("[MMYCS] settings 清理警告（项目 {}）: {}", id, e);
+        }
         if let Err(e) = crate::inject::remove_claude_md_block(&path) {
             eprintln!("[MMYCS] CLAUDE.md 清理警告（项目 {}）: {}", id, e);
         }
@@ -886,6 +889,13 @@ fn unbind_template(project_path: String) -> Result<(), String> {
     bindings.bindings.retain(|b| b.project_path != norm_path);
     std::fs::write(&path, serde_json::to_string_pretty(&bindings).unwrap_or_default())
         .map_err(|e| e.to_string())?;
+
+    // 清理模板注入的 .claude/CLAUDE.md
+    let claude_md = std::path::Path::new(&norm_path).join(".claude").join("CLAUDE.md");
+    if claude_md.exists() {
+        let _ = std::fs::remove_file(&claude_md);
+    }
+
     Ok(())
 }
 

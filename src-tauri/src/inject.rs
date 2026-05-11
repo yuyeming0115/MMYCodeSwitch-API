@@ -18,7 +18,7 @@ const ENV_KEYS: &[&str] = &[
 ];
 
 pub fn inject(config_dir: &str, provider: &Provider, api_key_plain: Option<&str>) -> Result<()> {
-    let settings_path = Path::new(config_dir).join("settings.json");
+    let settings_path = Path::new(config_dir).join("settings.local.json");
     backup(&settings_path)?;
 
     let mut root: Value = if settings_path.exists() {
@@ -101,12 +101,12 @@ pub fn inject_to_project_dir(project_path: &str, provider: &Provider, api_key_pl
     // 1. 确保项目专属目录存在（用于归档历史记录）
     let _mmycs_config_dir = crate::config::ensure_project_config_dir(project_path)?;
 
-    // 2. ★ 关键：写入到项目目录下的 .claude/settings.json（Claude Code CLI 会读取这个）
+    // 2. ★ 关键：写入到项目目录下的 .claude/settings.local.json（Claude Code CLI 会读取这个）
     let project_claude_dir = Path::new(project_path).join(".claude");
     std::fs::create_dir_all(&project_claude_dir)?;
-    let settings_path = project_claude_dir.join("settings.json");
+    let settings_path = project_claude_dir.join("settings.local.json");
 
-    // 3. 备份现有 settings.json（如果有）
+    // 3. 备份现有 settings.local.json（如果有）
     if settings_path.exists() {
         backup(&settings_path)?;
     }
@@ -155,18 +155,24 @@ pub fn inject_to_project_dir(project_path: &str, provider: &Provider, api_key_pl
         }
     }
 
-    // 4. 写入 settings.json
+    // 4. 写入 settings.local.json
     std::fs::write(&settings_path, serde_json::to_string_pretty(&root)?)?;
 
     // 5. 更新绑定记录
     crate::config::update_project_binding(project_path, &provider.id, &provider.name)?;
 
-    // 6. 归档会话（记录配置快照）- 从 root 中重新读取 env
+    // 6. 归档会话（记录配置快照，Token 字段脱敏）- 从 root 中重新读取 env
     let config_snapshot: HashMap<String, String> = root.get("env")
         .and_then(|e| e.as_object())
         .map(|env| env.iter()
-            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-            .collect())
+            .filter_map(|(k, v)| v.as_str().map(|s| {
+                let val = if k == "ANTHROPIC_AUTH_TOKEN" {
+                    format!("{}***", &s[..s.len().min(8)])
+                } else {
+                    s.to_string()
+                };
+                (k.clone(), val)
+            })).collect())
         .unwrap_or_default();
     crate::config::archive_session(project_path, provider, config_snapshot)?;
 
@@ -293,7 +299,7 @@ pub fn remove_claude_md_block(project_path: &str) -> Result<bool> {
 /// 替换标记块及其内容（保留标记前后的所有内容）
 fn replace_marker_block(content: &str, new_marker_block: &str) -> String {
     let start_idx = content.find(CLAUDE_MD_MARKER_START).unwrap();
-    let end_idx = content.find(CLAUDE_MD_MARKER_END).unwrap() + CLAUDE_MD_MARKER_END.len();
+    let end_idx = content.rfind(CLAUDE_MD_MARKER_END).unwrap() + CLAUDE_MD_MARKER_END.len();
 
     format!(
         "{}\n{}",
@@ -305,7 +311,7 @@ fn replace_marker_block(content: &str, new_marker_block: &str) -> String {
 /// 移除标记块及其内容（保留标记前后的所有内容）
 fn remove_marker_block_from_content(content: &str) -> String {
     let start_idx = content.find(CLAUDE_MD_MARKER_START).unwrap();
-    let end_idx = content.find(CLAUDE_MD_MARKER_END).unwrap() + CLAUDE_MD_MARKER_END.len();
+    let end_idx = content.rfind(CLAUDE_MD_MARKER_END).unwrap() + CLAUDE_MD_MARKER_END.len();
 
     let before = content[..start_idx].trim_end().to_string();
     let after = content[end_idx..].trim_start().to_string();
@@ -316,4 +322,26 @@ fn remove_marker_block_from_content(content: &str) -> String {
         (false, true) => before,
         (false, false) => format!("{}\n\n{}", before, after),
     }
+}
+
+/// 清理项目级 settings.local.json 中的 API Key 字段
+pub fn clean_project_settings(project_path: &str) -> Result<()> {
+    let settings_path = Path::new(project_path)
+        .join(".claude")
+        .join("settings.local.json");
+    if !settings_path.exists() { return Ok(()); }
+
+    let mut root: Value = serde_json::from_str(&std::fs::read_to_string(&settings_path)?)?;
+    if let Some(env) = root.get_mut("env").and_then(|e| e.as_object_mut()) {
+        for key in ENV_KEYS { env.remove(*key); }
+        if env.is_empty() {
+            root.as_object_mut().unwrap().remove("env");
+        }
+    }
+    if root.as_object().map(|o| o.is_empty()).unwrap_or(false) {
+        std::fs::remove_file(&settings_path)?;
+    } else {
+        std::fs::write(&settings_path, serde_json::to_string_pretty(&root)?)?;
+    }
+    Ok(())
 }
