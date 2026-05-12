@@ -73,7 +73,7 @@
     </div>
 
     <footer class="page-footer">
-      <n-button size="large" @click="emit('back')">{{ t('cancel') }}</n-button>
+      <n-button size="medium" @click="emit('back')">{{ t('cancel') }}</n-button>
     </footer>
   </div>
 </template>
@@ -160,7 +160,7 @@ body.dark .page-header { background: #242424; border-bottom-color: #333; }
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding: 12px 16px;
+  padding: 8px 12px;
   border-top: 1px solid #eee;
   background: #fafafa;
   flex-shrink: 0;

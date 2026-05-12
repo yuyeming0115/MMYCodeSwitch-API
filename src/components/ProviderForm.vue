@@ -24,7 +24,7 @@
             :class="{ selected: selectedTemplateId === tpl.id }"
             @click="selectTemplate(tpl)"
           >
-            <div class="tpl-icon-wrap" :style="{ background: tpl.color + '18', borderColor: tpl.color + '40' }">
+          <div class="tpl-icon-wrap">
               <img v-if="tpl.builtinIcon" :src="`/${tpl.builtinIcon}`" class="tpl-icon-img" />
               <span v-else class="tpl-icon">{{ tpl.icon }}</span>
             </div>
@@ -187,10 +187,10 @@
     </div>
 
     <footer class="page-footer">
-      <n-button size="large" @click="emit('back')">{{ t('cancel') }}</n-button>
+      <n-button size="medium" @click="emit('back')">{{ t('cancel') }}</n-button>
       <!-- 编辑模式下显示"保存为模板"按钮 -->
-      <n-button v-if="isEdit" size="large" type="warning" @click="showSaveAsTemplateModal = true">{{ t('save_as_template') }}</n-button>
-      <n-button type="primary" size="large" :loading="saving" @click="submit">{{ t('save') }}</n-button>
+      <n-button v-if="isEdit" size="medium" type="warning" @click="showSaveAsTemplateModal = true">{{ t('save_as_template') }}</n-button>
+      <n-button type="primary" size="medium" :loading="saving" @click="submit">{{ t('save') }}</n-button>
     </footer>
 
     <!-- 添加自定义模板对话框 -->
@@ -719,7 +719,7 @@ body.dark .page-header { background: #242424; border-bottom-color: #333; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 8px 12px;
   border-top: 1px solid #eee;
   background: #fafafa;
   flex-shrink: 0;
@@ -746,35 +746,35 @@ body.dark .page-footer { background: #242424; border-top-color: #333; }
 body.dark .section-title { color: #ccc; }
 .template-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 12px;
 }
 .tpl-card {
-  border: 2px solid #e8e8e8;
-  border-radius: 12px;
-  padding: 12px 10px;
+  border: 1px solid #e8e8e8;
+  border-radius: 10px;
+  padding: 12px 8px 10px;
   cursor: pointer;
   transition: all 0.2s;
   position: relative;
-  background: #fff;
+  background: #f5f5f5;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
-body.dark .tpl-card { background: #2a2a2a; border-color: #444; }
-.tpl-card:hover { border-color: #18a058; box-shadow: 0 2px 8px rgba(24,160,88,0.15); }
-.tpl-card.selected { border-color: #18a058; background: #f0faf5; }
-body.dark .tpl-card.selected { background: #1a3a28; }
+body.dark .tpl-card { background: #333; border-color: #444; }
+.tpl-card:hover { border-color: #d77757; box-shadow: 0 4px 12px rgba(215,119,87,0.2); transform: translateY(-2px); }
+.tpl-card.selected { border-color: #d77757; background: #faf3eb; }
+body.dark .tpl-card.selected { background: #2a2018; }
 .tpl-icon-wrap {
-  width: 40px; height: 40px;
+  width: 48px; height: 48px;
   border-radius: 10px;
-  border: 1.5px solid;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  background: transparent;
 }
-.tpl-icon-img { width: 24px; height: 24px; object-fit: contain; }
+.tpl-icon-img { width: 32px; height: 32px; object-fit: contain; }
 .tpl-icon { font-size: 18px; }
 .tpl-name { font-weight: 600; font-size: 12px; color: #333; text-align: center; }
 body.dark .tpl-name { color: #ccc; }
