@@ -45,20 +45,24 @@ const isDark = defineModel<boolean>('isDark', { default: false })
 const appWindow = getCurrentWindow()
 let resizeTimeout: ReturnType<typeof setTimeout> | null = null
 let hourlyBackupTimer: ReturnType<typeof setInterval> | null = null
-const colorInput = ref<HTMLInputElement | null>(null)
+const showColorPicker = ref(false)
+const currentColor = ref('#d77757')
 
-// 主题色选择
-function triggerColorPicker() {
-  colorInput.value?.click()
-}
-function onColorChange(e: Event) {
-  const hex = (e.target as HTMLInputElement).value
+// 应用主题色
+function applyAccentColor(hex: string) {
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
   document.documentElement.style.setProperty('--accent-rgb', `${r}, ${g}, ${b}`)
   document.documentElement.style.setProperty('--accent-color', hex)
   localStorage.setItem('accent-color', hex)
+  currentColor.value = hex
+}
+
+// 取色器颜色确认
+function onColorPicked(value: string | null) {
+  if (!value) return
+  applyAccentColor(value)
 }
 
 /// 全局窗口拖拽：按住空白区域即可拖动窗口（macOS 透明窗口 data-tauri-drag-region 不可靠时的兜底）
@@ -78,6 +82,13 @@ function startWindowDrag(e: MouseEvent) {
 onMounted(async () => {
   await store.init()
   i18n.global.locale.value = store.config.language as 'zh' | 'en'
+
+  // 恢复用户自定义主题色
+  const savedColor = localStorage.getItem('accent-color')
+  if (savedColor) {
+    currentColor.value = savedColor
+    applyAccentColor(savedColor)
+  }
 
   // 恢复深浅色模式和精简模式状态，同时调整窗口大小
   try {
@@ -487,10 +498,9 @@ async function handleReorderProjects(orderedIds: string[]) {
         <div class="toolbar-btn" @click="isDark = !isDark" :title="isDark ? '浅色模式' : '深色模式'">
           <n-icon :size="20"><component :is="isDark ? SunnyOutline : MoonOutline" /></n-icon>
         </div>
-        <div class="toolbar-btn" @click="triggerColorPicker" title="主题色">
+        <div class="toolbar-btn" @click="showColorPicker = true" title="主题色">
           <n-icon :size="20"><ColorPaletteOutline /></n-icon>
         </div>
-        <input ref="colorInput" type="color" style="display:none" @input="onColorChange" />
         <div class="toolbar-btn" @click="currentPage = 'settings'" title="设置">
           <n-icon :size="20"><SettingsOutline /></n-icon>
         </div>
@@ -536,6 +546,11 @@ async function handleReorderProjects(orderedIds: string[]) {
       v-if="currentPage === 'usage-stats'"
       @back="goBack"
     />
+
+    <!-- 主题色取色器 -->
+    <n-modal v-model:show="showColorPicker" :mask-closable="true" preset="card" style="width:220px" :bordered="false" class="color-picker-modal">
+      <n-color-picker v-model:value="currentColor" :show-alpha="false" @update:value="onColorPicked" />
+    </n-modal>
   </div>
 </template>
 
@@ -647,5 +662,27 @@ body.dark .toolbar-btn svg {
 @media (max-width: 400px) {
   .toolbar { gap: 4px; padding: 6px 8px; }
   .toolbar-btn { width: 32px; height: 32px; }
+}
+
+/* 取色器 modal 样式 */
+.color-picker-modal {
+  border-radius: 12px !important;
+  background: #fff !important;
+}
+.color-picker-modal :deep(.n-card__content) {
+  padding: 12px !important;
+}
+.color-picker-modal :deep(.n-color-picker) {
+  --n-color-picker-button-border-color: #e0e0e0;
+}
+body.dark .color-picker-modal {
+  background: #2a2a2a !important;
+}
+body.dark .color-picker-modal :deep(.n-card__header) {
+  border-bottom-color: #3a3a3a !important;
+}
+body.dark .color-picker-modal :deep(.n-color-picker-button) {
+  border-color: #444 !important;
+  background: #333 !important;
 }
 </style>
