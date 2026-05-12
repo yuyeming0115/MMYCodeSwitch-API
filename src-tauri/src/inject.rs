@@ -98,8 +98,8 @@ fn log_switch(config_dir: &str, provider_name: &str) -> Result<()> {
 /// 注入 API 配置到项目专属配置目录
 /// 返回项目专属目录路径
 pub fn inject_to_project_dir(project_path: &str, provider: &Provider, api_key_plain: Option<&str>) -> Result<String> {
-    // 1. 确保项目专属目录存在（用于归档历史记录）
-    let _mmycs_config_dir = crate::config::ensure_project_config_dir(project_path)?;
+    // 1. 确保项目专属目录存在（使用 v2 供应商目录结构）
+    let _mmycs_config_dir = crate::config::ensure_project_config_dir(project_path, &provider.name)?;
 
     // 2. ★ 关键：写入到项目目录下的 .claude/settings.local.json（Claude Code CLI 会读取这个）
     let project_claude_dir = Path::new(project_path).join(".claude");

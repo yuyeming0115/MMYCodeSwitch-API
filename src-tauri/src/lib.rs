@@ -43,6 +43,12 @@ pub struct ProviderInput {
 fn init_app() -> Result<(), String> {
     config::ensure_dirs().map_err(|e| e.to_string())?;
     config::get_or_create_key().map_err(|e| e.to_string())?;
+    // 执行 v1 → v2 数据结构迁移
+    if let Ok(migrated) = config::migrate_v1_to_v2() {
+        if migrated {
+            eprintln!("[MMYCS] 已完成 v1 → v2 数据结构迁移（供应商分目录）");
+        }
+    }
     Ok(())
 }
 
@@ -180,6 +186,7 @@ fn inject_to_project(project_path: String, provider_id: String) -> Result<Inject
     } else {
         // 新增记录
         let max_order = cfg.active_projects.iter().map(|p| p.order).max().unwrap_or(0);
+        let provider_dir = config::provider_name_to_dir(&provider.name);
         let new_proj = ActiveProject {
             id: format!("proj_{}", chrono::Utc::now().timestamp_millis()),
             name: project_name,
@@ -190,6 +197,7 @@ fn inject_to_project(project_path: String, provider_id: String) -> Result<Inject
             updated_at: now,
             config_dir: Some(config_dir.clone()),
             order: max_order + 1,
+            provider_dir,
         };
         cfg.active_projects.push(new_proj.clone());
         new_proj
@@ -242,15 +250,32 @@ fn clean_claude_md_block(project_path: String) -> Result<bool, String> {
 #[tauri::command]
 fn get_project_config_dir(project_path: String) -> Result<String, String> {
     let norm_path = config::normalize_project_path(&project_path);
-    let dir = config::get_project_config_dir(&norm_path);
-    Ok(dir.to_string_lossy().to_string())
+    // 从 active_projects 中查找 provider 信息
+    let cfg = config::load_app_config().map_err(|e| e.to_string())?;
+    if let Some(proj) = cfg.active_projects.iter().find(|p| config::normalize_project_path(&p.project_path) == norm_path) {
+        let dir = config::get_project_config_dir_for_project(proj);
+        Ok(dir.to_string_lossy().to_string())
+    } else {
+        // 回退：使用 provider_name 生成路径
+        let providers = config::load_providers().map_err(|e| e.to_string())?;
+        let provider_name = providers.first().map(|p| p.name.clone()).unwrap_or_else(|| "unknown".to_string());
+        let dir = config::get_project_config_dir(&norm_path, &provider_name);
+        Ok(dir.to_string_lossy().to_string())
+    }
 }
 
 // ── 获取项目的会话归档列表 ────────────────────────────────────────────────
 #[tauri::command]
 fn get_project_sessions(project_path: String) -> Result<Vec<SessionArchive>, String> {
     let norm_path = config::normalize_project_path(&project_path);
-    config::get_project_sessions(&norm_path).map_err(|e| e.to_string())
+    // 从 active_projects 中查找 provider 信息
+    let cfg = config::load_app_config().map_err(|e| e.to_string())?;
+    if let Some(proj) = cfg.active_projects.iter().find(|p| config::normalize_project_path(&p.project_path) == norm_path) {
+        config::get_project_sessions(&norm_path, &proj.provider_name).map_err(|e| e.to_string())
+    } else {
+        // 回退：遍历所有供应商查找
+        Ok(vec![])
+    }
 }
 
 // ── 图标上传 ──────────────────────────────────────────────────────────────────
