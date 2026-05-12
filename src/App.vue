@@ -164,11 +164,6 @@ body.dark .titlebar {
   color: #555;
 }
 body.dark .titlebar-title { color: #ccc; }
-.titlebar-separator {
-  margin: 0 6px;
-  color: #999;
-  font-size: 12px;
-}
 .titlebar-page-title {
   font-size: 13px;
   font-weight: 600;

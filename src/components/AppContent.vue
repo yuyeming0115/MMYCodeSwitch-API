@@ -388,15 +388,16 @@ async function handleReorderProjects(orderedIds: string[]) {
     <!-- 自定义标题栏（data-tauri-drag-region + startDragging 双重保障 macOS 拖拽） -->
     <div class="titlebar" data-tauri-drag-region>
       <div class="titlebar-left">
-        <img class="titlebar-icon" src="/icon.png" width="20" height="20" />
-        <span class="titlebar-title">MMYCodeSwitch-API</span>
-        <template v-if="pageTitle">
-          <span class="titlebar-separator">·</span>
+        <template v-if="currentPage === 'main'">
+          <img class="titlebar-icon" src="/icon.png" width="20" height="20" />
+          <span class="titlebar-title">MMYCodeSwitch-API</span>
+        </template>
+        <template v-else>
+          <button class="titlebar-btn back-btn" @click="goBack" title="返回">←</button>
           <span class="titlebar-page-title">{{ pageTitle }}</span>
         </template>
       </div>
       <div class="titlebar-controls">
-        <button v-if="currentPage !== 'main'" class="titlebar-btn back-btn" @click="goBack" title="返回">←</button>
         <button class="titlebar-btn compact" @click="compactMode = !compactMode" title="精简模式">
           <n-icon :size="16"><AppsOutline /></n-icon>
         </button>
