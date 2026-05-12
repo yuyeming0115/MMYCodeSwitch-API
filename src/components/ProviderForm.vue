@@ -1,10 +1,5 @@
 <template>
   <div class="page">
-    <header class="page-header">
-      <n-button text size="large" @click="emit('back')">←</n-button>
-      <span class="page-title">{{ isEdit ? t('edit') : t('add_provider') }}</span>
-    </header>
-
     <div class="page-content">
       <!-- 顶部：模板选择区（仅新建时显示） -->
       <div v-if="!isEdit" class="template-section">
@@ -66,6 +61,12 @@
 
       <!-- 配置表单 -->
       <n-form :model="form" label-placement="left" label-width="90px">
+        <!-- 编辑模式下"保存为模板"快捷入口 -->
+        <n-form-item v-if="isEdit" label="">
+          <n-button text type="warning" size="small" @click="showSaveAsTemplateModal = true">
+            {{ t('save_as_template') }}
+          </n-button>
+        </n-form-item>
         <n-form-item :label="t('name')" required>
           <n-input v-model:value="form.name" />
         </n-form-item>
@@ -186,13 +187,6 @@
       </n-form>
     </div>
 
-    <footer class="page-footer">
-      <n-button size="medium" @click="emit('back')">{{ t('cancel') }}</n-button>
-      <!-- 编辑模式下显示"保存为模板"按钮 -->
-      <n-button v-if="isEdit" size="medium" type="warning" @click="showSaveAsTemplateModal = true">{{ t('save_as_template') }}</n-button>
-      <n-button type="primary" size="medium" :loading="saving" @click="submit">{{ t('save') }}</n-button>
-    </footer>
-
     <!-- 添加自定义模板对话框 -->
     <n-modal v-model:show="showAddTemplateModal" preset="dialog" :title="t('add_custom_template')" style="width:600px">
       <n-tabs v-model:value="addTemplateTab">
@@ -281,10 +275,8 @@ const msg = useMessage()
 const dialog = useDialog()
 
 const props = defineProps<{ provider?: Provider }>()
-const emit = defineEmits<{ back: []; done: [] }>()
 
 const isEdit = ref(false)
-const saving = ref(false)
 const showPaste = ref(false)
 const pasteText = ref('')
 const customModelInput = ref('')
@@ -653,23 +645,32 @@ async function saveAsTemplate() {
   }
 }
 
-async function submit() {
-    if (!form.value.name) { msg.error(t('required')); return }
-    saving.value = true
-    try {
-      const id = props.provider?.id ?? `provider_${Date.now()}`
-      let icon_path: string | null = props.provider?.icon_path ?? null
+// 防抖自动保存
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+watch([form, pendingIconData], () => {
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(async () => {
+    if (!form.value.name?.trim()) return
+    await autoSave()
+  }, 800)
+}, { deep: true })
 
-      // 1. 优先使用用户上传的图标
-      if (pendingIconData.value) {
-        icon_path = await invoke<string>('save_provider_icon', { providerId: id, dataBase64: pendingIconData.value.base64, ext: pendingIconData.value.ext })
-      }
-      // 2. 如果用户没传图、原供应商也没有图 → 使用选中模板的内置 SVG 图标
-      else if (!icon_path && selectedBuiltinIcon.value) {
-        icon_path = selectedBuiltinIcon.value  // 如 "icons/dashscope.svg"，指向 public/ 目录
-      }
+async function autoSave() {
+  try {
+    const id = props.provider?.id ?? `provider_${Date.now()}`
+    let icon_path: string | null = props.provider?.icon_path ?? null
 
-      const input = {
+    if (pendingIconData.value) {
+      icon_path = await invoke<string>('save_provider_icon', {
+        providerId: id, dataBase64: pendingIconData.value.base64, ext: pendingIconData.value.ext
+      })
+      pendingIconData.value = null
+    }
+    else if (!icon_path && selectedBuiltinIcon.value) {
+      icon_path = selectedBuiltinIcon.value
+    }
+
+    await store.upsertProvider({
       id: props.provider?.id ?? null,
       name: form.value.name.trim(),
       icon_fallback: form.value.icon_fallback || form.value.name.slice(0, 2),
@@ -679,14 +680,9 @@ async function submit() {
       models: form.value.models_default ? { default: form.value.models_default } : null,
       notes: form.value.notes || null,
       icon_path,
-    }
-    await store.upsertProvider(input)
-    msg.success(t('save_success'))
-    emit('done')
+    })
   } catch (e) {
-    msg.error(t('save_failed') + ': ' + (e instanceof Error ? e.message : String(e)))
-  } finally {
-    saving.value = false
+    console.error('[ProviderForm] auto-save failed:', e)
   }
 }
 </script>
@@ -697,37 +693,13 @@ async function submit() {
   flex-direction: column;
   height: 100vh;
 }
-.page-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid #eee;
-  background: #fff;
-  flex-shrink: 0;
-}
-body.dark .page-header { background: #242424; border-bottom-color: #333; }
-.page-title { font-size: 18px; font-weight: 700; }
 .page-content {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
-  padding-bottom: 80px;  /* 为底部按钮预留空间 */
-  min-height: 0;  /* 确保 flex 子元素可正确收缩 */
+  padding-bottom: 16px;
+  min-height: 0;
 }
-.page-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-top: 1px solid #eee;
-  background: #fafafa;
-  flex-shrink: 0;
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
-}
-body.dark .page-footer { background: #242424; border-top-color: #333; }
 
 .template-section {
   margin-bottom: 16px;

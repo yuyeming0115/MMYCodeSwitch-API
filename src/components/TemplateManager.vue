@@ -1,10 +1,5 @@
 <template>
   <div class="page">
-    <header class="page-header">
-      <n-button text size="large" @click="emit('back')">←</n-button>
-      <span class="page-title">{{ t('templates') }}</span>
-    </header>
-
     <div class="page-content">
       <p class="hint-text">{{ t('template_default_hint') }}</p>
 
@@ -82,9 +77,6 @@
       </n-modal>
     </div>
 
-    <footer class="page-footer">
-      <n-button size="medium" @click="emit('back')">{{ t('cancel') }}</n-button>
-    </footer>
   </div>
 </template>
 
@@ -98,7 +90,6 @@ const { t } = useI18n()
 const store = useAppStore()
 const msg = useMessage()
 const dialog = useDialog()
-const emit = defineEmits<{ back: [] }>()
 
 const showAddModal = ref(false)
 const templateName = ref('')
@@ -198,36 +189,12 @@ async function doAdopt(name: string) {
   flex-direction: column;
   height: 100vh;
 }
-.page-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid #eee;
-  background: #fff;
-  flex-shrink: 0;
-}
-body.dark .page-header { background: #242424; border-bottom-color: #333; }
-.page-title { font-size: 18px; font-weight: 700; }
 .page-content {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
-  padding-bottom: 80px;
+  padding-bottom: 16px;
 }
-.page-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 8px 12px;
-  border-top: 1px solid #eee;
-  background: #fafafa;
-  flex-shrink: 0;
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
-}
-body.dark .page-footer { background: #242424; border-top-color: #333; }
 .hint-text { color: #666; font-size: 12px; margin-bottom: 8px; }
 body.dark .hint-text { color: #999; }
 .empty-hint { color: #999; font-size: 13px; padding: 8px 0; }

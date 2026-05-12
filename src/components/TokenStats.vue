@@ -1,14 +1,11 @@
 <template>
   <div class="page">
-    <header class="page-header">
-      <n-button text size="large" @click="emit('back')">←</n-button>
-      <span class="page-title">{{ t('usage_stats') }}</span>
-      <n-button text size="large" @click="loadStats" style="margin-left: auto">
-        <template #icon><n-icon><refresh-outline-icon /></n-icon></template>
-      </n-button>
-    </header>
-
     <div class="page-content" v-if="stats">
+      <div class="page-actions">
+        <n-button text size="large" @click="loadStats">
+          <template #icon><n-icon><refresh-outline-icon /></n-icon></template>
+        </n-button>
+      </div>
       <!-- 平台选择 -->
       <div class="platform-bar">
         <div class="platform-label">{{ t('select_platform') }}</div>
@@ -126,9 +123,6 @@
       <p class="empty-hint">{{ t('usage_no_data') }}</p>
     </div>
 
-    <footer class="page-footer">
-      <n-button size="medium" @click="emit('back')">{{ t('cancel') }}</n-button>
-    </footer>
   </div>
 </template>
 
@@ -143,7 +137,6 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const { t, locale } = useI18n()
 const msg = useMessage()
-const emit = defineEmits<{ back: [] }>()
 const appWindow = getCurrentWindow()
 
 interface UsageStats {
@@ -343,42 +336,22 @@ onUnmounted(() => {
   flex-direction: column;
   height: 100vh;
 }
-.page-header {
+.page-actions {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid #eee;
-  background: #fff;
-  flex-shrink: 0;
+  justify-content: flex-end;
+  padding: 8px 16px 0;
 }
-body.dark .page-header { background: #242424; border-bottom-color: #333; }
-.page-title { font-size: 18px; font-weight: 700; }
 .page-content {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
-  padding-bottom: 80px;
+  padding-bottom: 16px;
 }
 .page-content.empty {
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.page-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 8px 12px;
-  border-top: 1px solid #eee;
-  background: #fafafa;
-  flex-shrink: 0;
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
-}
-body.dark .page-footer { background: #242424; border-top-color: #333; }
-
 /* 平台选择 */
 .platform-bar { margin-bottom: 12px; }
 .platform-label { font-size: 12px; color: #999; margin-bottom: 6px; }

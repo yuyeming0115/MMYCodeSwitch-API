@@ -23,7 +23,8 @@ import {
   SunnyOutline,
   MoonOutline,
   SettingsOutline,
-  AddCircleOutline
+  AddCircleOutline,
+  AppsOutline
 } from '@vicons/ionicons5'
 
 const { t } = useI18n()
@@ -124,8 +125,28 @@ watch(isDark, async (val) => {
   } catch (_) {}
 })
 
+// 监听页面切换，离开表单页时刷新供应商列表
+watch(currentPage, (newVal, oldVal) => {
+  if (oldVal === 'form' && newVal === 'main') {
+    store.loadProviders()
+  }
+})
+
 const activeInstance = computed(() => store.activeInstance())
 const activeProviderId = computed(() => activeInstance.value?.active_provider_id)
+
+// 标题栏页面标题
+const pageTitle = computed(() => {
+  switch (currentPage.value) {
+    case 'form': return editingProvider.value ? t('edit') : t('add_provider')
+    case 'settings': return t('settings')
+    case 'templates': return t('templates')
+    case 'skills': return t('skills')
+    case 'plugins': return t('plugins')
+    case 'usage-stats': return t('usage_stats')
+    default: return ''
+  }
+})
 const injecting = ref(false)  // 注入进行中，防止重复点击
 const projectListCollapsed = ref(false)  // 项目列表折叠状态
 const compactMode = ref(false)  // 精简模式状态
@@ -369,10 +390,15 @@ async function handleReorderProjects(orderedIds: string[]) {
       <div class="titlebar-left">
         <img class="titlebar-icon" src="/icon.png" width="20" height="20" />
         <span class="titlebar-title">MMYCodeSwitch-API</span>
+        <template v-if="pageTitle">
+          <span class="titlebar-separator">·</span>
+          <span class="titlebar-page-title">{{ pageTitle }}</span>
+        </template>
       </div>
       <div class="titlebar-controls">
+        <button v-if="currentPage !== 'main'" class="titlebar-btn back-btn" @click="goBack" title="返回">←</button>
         <button class="titlebar-btn compact" @click="compactMode = !compactMode" title="精简模式">
-          {{ compactMode ? '📚' : '📖' }}
+          <n-icon :size="16"><AppsOutline /></n-icon>
         </button>
         <button class="titlebar-btn" @click="appWindow.minimize()">─</button>
         <button class="titlebar-btn" @click="toggleMax">□</button>
@@ -413,7 +439,7 @@ async function handleReorderProjects(orderedIds: string[]) {
       </div>
 
       <!-- 底部工具栏（简洁矢量图标） -->
-      <div v-show="!compactMode" class="toolbar">
+      <div v-if="!compactMode" class="toolbar">
         <div class="toolbar-btn" @click="openAdd" title="添加供应商">
           <n-icon :size="20"><AddCircleOutline /></n-icon>
         </div>
@@ -452,7 +478,6 @@ async function handleReorderProjects(orderedIds: string[]) {
       v-if="currentPage === 'form'"
       :provider="editingProvider"
       @back="goBack"
-      @done="goBack(); store.loadProviders()"
     />
 
     <!-- 模板管理页面 -->
@@ -571,8 +596,8 @@ body.dark .toggle-title { color: #aaa; }
 
 /* 深色模式适配 */
 body.dark .toolbar {
-  border-top-color: #333;
-  background: #242424;
+  border-top: none;
+  background: #1a1a1a;
 }
 body.dark .toolbar-btn:hover {
   background: rgba(215, 119, 87, 0.15);

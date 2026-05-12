@@ -164,6 +164,17 @@ body.dark .titlebar {
   color: #555;
 }
 body.dark .titlebar-title { color: #ccc; }
+.titlebar-separator {
+  margin: 0 6px;
+  color: #999;
+  font-size: 12px;
+}
+.titlebar-page-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+}
+body.dark .titlebar-page-title { color: #ccc; }
 .titlebar-controls {
   display: flex;
   gap: 0;
@@ -182,6 +193,11 @@ body.dark .titlebar-title { color: #ccc; }
   transition: background 0.15s;
   border: none;
   background: transparent;
+}
+.titlebar-btn.back-btn {
+  width: auto;
+  padding: 0 8px;
+  font-size: 18px;
 }
 .titlebar-btn:hover { background: #e8e8e8; }
 body.dark .titlebar-btn:hover { background: #3a3a3a; }
