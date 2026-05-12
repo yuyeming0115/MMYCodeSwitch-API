@@ -382,7 +382,7 @@ watch(() => props.provider, (p) => {
     }
     form.value = {
       name: p.name,
-      icon_fallback: p.icon_fallback || p.name.slice(0, 2),
+      icon_fallback: p.icon_fallback || p.name.slice(0, 3),
       provider_type: pt,
       api_key_plain: '',
       base_url: p.base_url ?? '',
@@ -416,7 +416,7 @@ function selectTemplate(tpl: ProviderTemplate) {
   selectedTemplateId.value = tpl.id
   selectedBuiltinIcon.value = tpl.builtinIcon || null  // ★ 记录内置图标路径
   form.value.name = tpl.name
-  form.value.icon_fallback = tpl.iconFallback || tpl.name.slice(0, 2)
+  form.value.icon_fallback = tpl.iconFallback || tpl.name.slice(0, 3)
   form.value.base_url = tpl.baseUrls[0]?.value || ''
   if (tpl.models.length > 0) {
     form.value.models_default = tpl.models[0]
@@ -553,7 +553,7 @@ async function saveNewTemplate() {
     color: '#666666',
     description: newTemplateDesc.value || null,
     builtinIcon: null,
-    iconFallback: newTemplateName.value.slice(0, 2),
+    iconFallback: newTemplateName.value.slice(0, 3),
     baseUrls: [{ label: 'API', value: newTemplateBaseUrl.value }],
     models,
     keyPlaceholder: null,
@@ -620,11 +620,11 @@ async function saveAsTemplate() {
   const input = {
     id: null,
     name: saveAsTemplateName.value.trim(),
-    icon: form.value.icon_fallback.slice(0, 2) || form.value.name.slice(0, 2),
+    icon: form.value.icon_fallback.slice(0, 3) || form.value.name.slice(0, 3),
     color: '#666666',
     description: saveAsTemplateDesc.value || `来自供应商「${form.value.name}」`,
     builtinIcon: null,
-    iconFallback: form.value.icon_fallback || form.value.name.slice(0, 2),
+    iconFallback: form.value.icon_fallback || form.value.name.slice(0, 3),
     baseUrls: [{ label: 'API', value: form.value.base_url }],
     models: uniqueModels.length > 0 ? uniqueModels : [form.value.models_default || ''],
     keyPlaceholder: null,
@@ -673,7 +673,7 @@ async function autoSave() {
     await store.upsertProvider({
       id: props.provider?.id ?? null,
       name: form.value.name.trim(),
-      icon_fallback: form.value.icon_fallback || form.value.name.slice(0, 2),
+      icon_fallback: form.value.icon_fallback || form.value.name.slice(0, 3),
       provider_type: form.value.provider_type,
       base_url: form.value.base_url || null,
       api_key_plain: form.value.api_key_plain || null,

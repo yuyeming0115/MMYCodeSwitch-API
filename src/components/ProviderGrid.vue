@@ -22,7 +22,7 @@
         :title="t('launch_claude_code')"
       >
         <img v-if="p.icon_path" :src="resolveIconUrl(p.icon_path)" class="icon-img" />
-        <div v-else class="icon-wrap"><span class="icon">{{ p.icon_fallback || p.name?.charAt(0) || '?' }}</span></div>
+        <div v-else class="icon-wrap"><span class="icon">{{ p.icon_fallback || p.name?.slice(0, 3) || '?' }}</span></div>
         <div class="label">{{ p.name }}</div>
         <div class="hover-text">{{ t('launch_claude_code') }}</div>
         <div v-if="p.id === activeProviderId" class="badge">✓</div>
