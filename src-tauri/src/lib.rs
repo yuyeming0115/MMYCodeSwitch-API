@@ -44,10 +44,10 @@ fn init_app() -> Result<(), String> {
     config::ensure_dirs().map_err(|e| e.to_string())?;
     config::get_or_create_key().map_err(|e| e.to_string())?;
     // 执行 v1 → v2 数据结构迁移
-    if let Ok(migrated) = config::migrate_v1_to_v2() {
-        if migrated {
-            eprintln!("[MMYCS] 已完成 v1 → v2 数据结构迁移（供应商分目录）");
-        }
+    match config::migrate_v1_to_v2() {
+        Ok(true) => eprintln!("[MMYCS] ✓ 已完成 v1 → v2 数据结构迁移（供应商分目录）"),
+        Ok(false) => eprintln!("[MMYCS] 数据已是 v2 格式，无需迁移"),
+        Err(e) => eprintln!("[MMYCS] ✗ v1 → v2 迁移失败: {}", e),
     }
     Ok(())
 }

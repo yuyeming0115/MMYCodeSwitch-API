@@ -94,7 +94,7 @@ pub struct AppConfig {
     pub backup_export_path: Option<String>,
 }
 
-fn default_config_version() -> u8 { 2 }
+fn default_config_version() -> u8 { 1 }
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -618,6 +618,10 @@ pub fn migrate_v1_to_v2() -> Result<bool> {
             let project_name = entry.file_name();
             let target_dir = mmycs_dir().join("providers").join(&target_dir_name).join("projects").join(&project_name);
             if !target_dir.exists() {
+                // rename 需要目标父目录存在
+                if let Some(parent) = target_dir.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
                 std::fs::rename(entry.path(), &target_dir)?;
             }
         }
