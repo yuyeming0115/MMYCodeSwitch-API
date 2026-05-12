@@ -157,6 +157,8 @@ export default {
   template_adopted: '已采用',
   template_adopt_success: '模板已添加到你的列表',
   template_adopt_failed: '采用失败：{msg}',
+  template_preview: '预览',
+  template_no_template: '未绑定模板',
   // Skill 管理
   skills: 'Skill 模板库',
   skill_name: 'Skill 名称',
