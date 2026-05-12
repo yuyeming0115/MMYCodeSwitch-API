@@ -24,6 +24,7 @@
         <img v-if="p.icon_path" :src="resolveIconUrl(p.icon_path)" class="icon-img" />
         <div v-else class="icon-wrap"><span class="icon">{{ p.icon_fallback || p.name?.charAt(0) || '?' }}</span></div>
         <div class="label">{{ p.name }}</div>
+        <div class="hover-text">{{ t('launch_claude_code') }}</div>
         <div v-if="p.id === activeProviderId" class="badge">✓</div>
         <div v-if="testState[p.id]" class="test-badge" :class="testState[p.id]">
           {{ testState[p.id] === 'testing' ? '…' : testState[p.id] === 'ok' ? '✓' : '✗' }}
@@ -160,17 +161,22 @@ function onDragEnd() {
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
   padding: 14px 8px 10px;
   cursor: grab; position: relative;
-  transition: border-color .2s, box-shadow .2s;
+  transition: border-color .2s, box-shadow .2s, transform .2s;
   background: #fff; user-select: none;
 }
-.card:hover { border-color: #d77757; box-shadow: 0 3px 10px rgba(215, 119, 87,0.16); }
+.card:hover {
+  border-color: #d77757;
+  box-shadow: 0 8px 24px rgba(215, 119, 87, 0.2);
+  transform: scale(1.05) translateY(-4px);
+}
 .card.active { border-color: #d77757; background: #faf3eb; }
 
 /* 深色模式适配 */
 body.dark .card { background: #2a2a2a; border-color: #444; }
-body.dark .card:hover { border-color: #d77757; }
+body.dark .card:hover { border-color: #d77757; box-shadow: 0 8px 24px rgba(215, 119, 87, 0.25); }
 body.dark .card.active { background: #2a2018; border-color: #d77757; }
 body.dark .label { color: #ccc; }
+body.dark .hover-text { color: #e8956e; }
 
 /* 拖拽视觉反馈 */
 .ghost {
@@ -219,13 +225,26 @@ body.dark .icon { color: #ccc; }
   text-align: center; color: #444;
   max-width: 90px;
   line-height: 1.35;
-  /* 允许换行，最多2行 */
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   word-break: break-all;
+  transition: opacity .15s, visibility .15s;
 }
+
+/* hover 时文字切换 */
+.hover-text {
+  display: none;
+  font-size: 11px; font-weight: 700;
+  text-align: center; color: #d77757;
+  max-width: 90px;
+  line-height: 1.35;
+  position: absolute;
+  bottom: 10px;
+}
+.card:hover .label { opacity: 0; visibility: hidden; }
+.card:hover .hover-text { display: block; }
 
 .badge { position: absolute; top: 5px; right: 7px; color: #d77757; font-size: 14px; font-weight: 700; }
 .test-badge { position: absolute; bottom: 5px; right: 7px; font-size: 11px; font-weight: 700; }
