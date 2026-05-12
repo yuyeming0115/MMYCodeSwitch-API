@@ -165,31 +165,31 @@ function onDragEnd() {
   background: #fff; user-select: none;
 }
 .card:hover {
-  border-color: #d77757;
-  box-shadow: 0 8px 24px rgba(215, 119, 87, 0.2);
+  border-color: var(--accent-color);
+  box-shadow: 0 8px 24px rgba(var(--accent-rgb), 0.2);
   transform: scale(1.05) translateY(-4px);
 }
-.card.active { border-color: #d77757; background: #faf3eb; }
+.card.active { border-color: var(--accent-color); background: rgba(var(--accent-rgb), 0.08); }
 
 /* 深色模式适配 */
 body.dark .card { background: #2a2a2a; border-color: #444; }
-body.dark .card:hover { border-color: #d77757; box-shadow: 0 8px 24px rgba(215, 119, 87, 0.25); }
-body.dark .card.active { background: #2a2018; border-color: #d77757; }
+body.dark .card:hover { border-color: var(--accent-color); box-shadow: 0 8px 24px rgba(var(--accent-rgb), 0.25); }
+body.dark .card.active { background: rgba(var(--accent-rgb), 0.08); border-color: var(--accent-color); }
 body.dark .label { color: #ccc; }
 body.dark .hover-text { color: #e8956e; }
 
 /* 拖拽视觉反馈 */
 .ghost {
   opacity: 0.2;
-  border: 2px dashed #d77757;
+  border: 2px dashed var(--accent-color);
   border-radius: 14px;
 }
 .chosen {
-  box-shadow: 0 4px 16px rgba(215, 119, 87,0.2);
+  box-shadow: 0 4px 16px rgba(var(--accent-rgb), 0.2);
 }
 .dragging {
   transform: scale(1.05) rotate(1deg);
-  box-shadow: 0 16px 40px rgba(215, 119, 87, 0.3);
+  box-shadow: 0 16px 40px rgba(var(--accent-rgb), 0.3);
   z-index: 9999;
 }
 
@@ -209,8 +209,8 @@ body.dark .icon-wrap {
 }
 .card:hover .icon-wrap,
 .card.active .icon-wrap {
-  border-color: #d7775760;
-  box-shadow: 0 2px 6px rgba(215, 119, 87,0.15);
+  border-color: rgba(var(--accent-rgb), 0.38);
+  box-shadow: 0 2px 6px rgba(var(--accent-rgb), 0.15);
 }
 .icon {
   font-size: 18px;
@@ -237,7 +237,7 @@ body.dark .icon { color: #ccc; }
 .hover-text {
   display: none;
   font-size: 11px; font-weight: 700;
-  text-align: center; color: #d77757;
+  text-align: center; color: var(--accent-color);
   max-width: 90px;
   line-height: 1.35;
   position: absolute;
@@ -246,10 +246,10 @@ body.dark .icon { color: #ccc; }
 .card:hover .label { opacity: 0; visibility: hidden; }
 .card:hover .hover-text { display: block; }
 
-.badge { position: absolute; top: 5px; right: 7px; color: #d77757; font-size: 14px; font-weight: 700; }
+.badge { position: absolute; top: 5px; right: 7px; color: var(--accent-color); font-size: 14px; font-weight: 700; }
 .test-badge { position: absolute; bottom: 5px; right: 7px; font-size: 11px; font-weight: 700; }
 .test-badge.testing { color: #aaa; }
-.test-badge.ok { color: #d77757; }
+.test-badge.ok { color: var(--accent-color); }
 .test-badge.fail { color: #d03050; }
 .icon-img { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; }
 </style>

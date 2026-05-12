@@ -734,8 +734,8 @@ body.dark .section-title { color: #ccc; }
   align-items: center;
 }
 body.dark .tpl-card { background: #333; border-color: #444; }
-.tpl-card:hover { border-color: #d77757; box-shadow: 0 4px 12px rgba(215,119,87,0.2); transform: translateY(-2px); }
-.tpl-card.selected { border-color: #d77757; background: #faf3eb; }
+.tpl-card:hover { border-color: var(--accent-color); box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.2); transform: translateY(-2px); }
+.tpl-card.selected { border-color: var(--accent-color); background: rgba(var(--accent-rgb), 0.08); }
 body.dark .tpl-card.selected { background: #2a2018; }
 .tpl-icon-wrap {
   width: 48px; height: 48px;

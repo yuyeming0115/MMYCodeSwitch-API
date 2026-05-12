@@ -28,7 +28,8 @@ import {
   ArrowBackOutline,
   RemoveOutline,
   SquareOutline,
-  CloseOutline
+  CloseOutline,
+  ColorPaletteOutline
 } from '@vicons/ionicons5'
 
 const { t } = useI18n()
@@ -44,6 +45,21 @@ const isDark = defineModel<boolean>('isDark', { default: false })
 const appWindow = getCurrentWindow()
 let resizeTimeout: ReturnType<typeof setTimeout> | null = null
 let hourlyBackupTimer: ReturnType<typeof setInterval> | null = null
+const colorInput = ref<HTMLInputElement | null>(null)
+
+// 主题色选择
+function triggerColorPicker() {
+  colorInput.value?.click()
+}
+function onColorChange(e: Event) {
+  const hex = (e.target as HTMLInputElement).value
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  document.documentElement.style.setProperty('--accent-rgb', `${r}, ${g}, ${b}`)
+  document.documentElement.style.setProperty('--accent-color', hex)
+  localStorage.setItem('accent-color', hex)
+}
 
 /// 全局窗口拖拽：按住空白区域即可拖动窗口（macOS 透明窗口 data-tauri-drag-region 不可靠时的兜底）
 function startWindowDrag(e: MouseEvent) {
@@ -471,6 +487,10 @@ async function handleReorderProjects(orderedIds: string[]) {
         <div class="toolbar-btn" @click="isDark = !isDark" :title="isDark ? '浅色模式' : '深色模式'">
           <n-icon :size="20"><component :is="isDark ? SunnyOutline : MoonOutline" /></n-icon>
         </div>
+        <div class="toolbar-btn" @click="triggerColorPicker" title="主题色">
+          <n-icon :size="20"><ColorPaletteOutline /></n-icon>
+        </div>
+        <input ref="colorInput" type="color" style="display:none" @input="onColorChange" />
         <div class="toolbar-btn" @click="currentPage = 'settings'" title="设置">
           <n-icon :size="20"><SettingsOutline /></n-icon>
         </div>
@@ -597,10 +617,10 @@ body.dark .toggle-title { color: #aaa; }
   user-select: none;
 }
 .toolbar-btn:hover {
-  background: rgba(215, 119, 87, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
 }
 .toolbar-btn:hover svg {
-  color: #d77757;
+  color: var(--accent-color);
 }
 .toolbar-btn svg {
   color: #555;
@@ -613,10 +633,10 @@ body.dark .toolbar {
   background: #1a1a1a;
 }
 body.dark .toolbar-btn:hover {
-  background: rgba(215, 119, 87, 0.15);
+  background: rgba(var(--accent-rgb), 0.15);
 }
 body.dark .toolbar-btn:hover svg {
-  color: #d77757;
+  color: var(--accent-color);
 }
 body.dark .toolbar-btn svg {
   color: #aaa;

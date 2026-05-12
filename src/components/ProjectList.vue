@@ -284,7 +284,7 @@ body.dark .proj-name { color: #ddd; }
   font-size: 11px;
 }
 .proj-provider {
-  color: #d77757;
+  color: var(--accent-color);
   font-weight: 500;
 }
 .proj-time { color: #bbb; }
@@ -309,7 +309,7 @@ body.dark .proj-name { color: #ddd; }
   width: 24px; height: 24px;
   border-radius: 6px;
   border: none;
-  background: #d77757;
+  background: var(--accent-color);
   color: #fff;
   cursor: pointer;
   font-size: 10px;

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watchEffect } from 'vue'
+import { ref, watchEffect, onMounted } from 'vue'
 import { darkTheme } from 'naive-ui'
 import AppContent from './components/AppContent.vue'
 
@@ -7,6 +7,20 @@ const isDark = ref(false)
 watchEffect(() => {
   document.body.classList.toggle('dark', isDark.value)
 })
+
+// 恢复用户自定义主题色
+onMounted(() => {
+  const saved = localStorage.getItem('accent-color')
+  if (saved) applyAccentColor(saved)
+})
+
+function applyAccentColor(hex: string) {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  document.documentElement.style.setProperty('--accent-rgb', `${r}, ${g}, ${b}`)
+  document.documentElement.style.setProperty('--accent-color', hex)
+}
 </script>
 
 <template>
@@ -128,6 +142,11 @@ body.dark .page-content::-webkit-scrollbar-thumb:hover { background: rgba(200,20
 
 /* ==================== 全局布局 ==================== */
 
+:root {
+  --accent-rgb: 215, 119, 87;
+  --accent-color: rgb(var(--accent-rgb));
+}
+
 body { font-family: Inter, system-ui, sans-serif; background: #f5f5f5; color: #333; }
 .app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
@@ -189,10 +208,10 @@ body.dark .titlebar-page-title { color: #ccc; }
   padding: 0;
   border: none;
 }
-.titlebar-btn:hover { background: rgba(215, 119, 87, 0.12); }
-.titlebar-btn:hover svg { color: #d77757; }
-body.dark .titlebar-btn:hover { background: rgba(215, 119, 87, 0.15); }
-body.dark .titlebar-btn:hover svg { color: #d77757; }
+.titlebar-btn:hover { background: rgba(var(--accent-rgb), 0.12); }
+.titlebar-btn:hover svg { color: var(--accent-color); }
+body.dark .titlebar-btn:hover { background: rgba(var(--accent-rgb), 0.15); }
+body.dark .titlebar-btn:hover svg { color: var(--accent-color); }
 .titlebar-btn.close-btn:hover { background: #e81123 !important; }
 .titlebar-btn.close-btn:hover svg { color: #fff !important; }
 </style>
