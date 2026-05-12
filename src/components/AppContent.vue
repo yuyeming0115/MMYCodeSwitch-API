@@ -70,7 +70,7 @@ function startWindowDrag(e: MouseEvent) {
   // 忽略点击在按钮/链接/输入框等交互元素上的情况
   const target = e.target as HTMLElement
   // 注意：ProviderGrid 卡片类名是 .card，ProjectList 卡片类名是 .proj-card
-  if (target.closest('button, a, input, select, textarea, [role="button"], .n-button, .n-input, .n-select, .n-checkbox, .n-switch, .card, .proj-card, .n-modal, .n-popover, .n-dropdown, .toolbar, .statusbar, .titlebar, .project-section-toggle')) {
+  if (target.closest('button, a, input, select, textarea, [role="button"], .n-button, .n-input, .n-select, .n-checkbox, .n-switch, .card, .proj-card, .n-modal, .n-popover, .n-dropdown, .toolbar-btn, .statusbar, .titlebar, .project-section-toggle')) {
     return
   }
   // 同步调用，避免阻塞 UI

@@ -483,3 +483,73 @@ Review changed code for reuse, quality, and efficiency, then fix any issues foun
 - [ ] Skill CRUD 接口
 - [ ] Skill 列表 UI
 - [ ] Skill 备份/恢复
+
+---
+
+## 十九、变更记录
+
+### 2026-05-12 开发记录
+
+#### 1. 供应商目录结构优化（v1→v2 自动迁移）
+- **提交：** ec9353d
+- **涉及文件：** `src-tauri/src/config.rs`, `src-tauri/src/inject.rs`, `src-tauri/src/lib.rs`
+- **方案：** 供应商目录结构从 v1 升级到 v2，实现自动迁移逻辑，兼容旧版配置格式
+- **修复：** 提交 e4b6449 修复了迁移逻辑中的两个问题（`config.rs`, `lib.rs`）
+
+#### 2. i18n 修复
+- **提交：** 414d3e6
+- **涉及文件：** `src/i18n/zh.ts`
+- **内容：** 修复中文翻译文件中重复的 i18n key
+
+#### 3. UI 主题全面改版 — Claude Code 橙色主题
+- **提交：** e3faf20
+- **涉及文件：** `AppContent.vue`, `ProjectList.vue`, `ProviderGrid.vue`, `i18n/en.ts`, `i18n/zh.ts`
+- **内容：**
+  - UI 全面改用 Claude Code 标志性橙色主题
+  - toolbar 操作栏从顶部移至底部
+  - 添加供应商按钮移至 toolbar 首位，悬浮时高亮提示（67b6054）
+
+#### 4. 供应商卡片交互优化
+- **提交：** 7c413bf, cdb0b36
+- **涉及文件：** `ProviderGrid.vue`, `ProviderForm.vue`
+- **内容：**
+  - 卡片 hover 时放大浮起效果
+  - 按钮文字切换为"启动 Claude Code"
+  - 供应商卡片图标显示前 3 个字母（原为 2 个）
+
+#### 5. 页面布局重构
+- **提交：** a7a9cf3, e49a88c, d786a7c, 532247a
+- **涉及文件：** `App.vue`, `AppContent.vue` 及所有子页面组件
+- **内容：**
+  - 页面标题整合到标题栏，去掉原有的底部栏
+  - 新增自动保存功能
+  - 统一子页面底部栏高度，优化模板卡片图标样式
+  - 标题栏主页面和子页面采用差异化布局
+  - 标题栏按钮风格统一为底部 toolbar 圆角 SVG 风格
+
+#### 6. 主题色取色器
+- **提交：** 765f409, 728443f
+- **涉及文件：** `App.vue`, `AppContent.vue`, `ProjectList.vue`, `ProviderForm.vue`, `ProviderGrid.vue`
+- **内容：**
+  - 新增主题色取色器按钮，CSS 变量统一管理主题色
+  - 取色器改用 Naive UI 原生组件，替代自定义实现
+  - 优化深色模式下的 modal 样式
+
+#### 7. 工具栏拖拽功能
+- **涉及文件：** `src/components/AppContent.vue`
+- **内容：**
+  - 底部工具栏空白区域支持左键按住拖动窗体
+  - 将拖拽排除列表中的 `.toolbar` 替换为 `.toolbar-btn`，按钮本身仍不可拖拽
+
+### 2026-05-11 开发记录
+
+#### 1. 安全改进计划
+- **文件：** `安全改进计划-APIKey防泄露与注入防污染.md`
+- **内容：** API Key 防泄露与注入防污染方案设计
+
+#### 2. jCode 机制与目录结构优化
+- **文件：** `.jcode机制提炼与采纳方案.md`, `.jcode目录结构优化方案.md`
+- **内容：** 研究 jCode 的目录结构和管理机制，为 MMYCodeSwitch-API 的目录设计提供参考
+
+#### 3. 项目文档更新
+- **内容：** CHANGELOG.md 更新，CLAUDE.md 项目管理
