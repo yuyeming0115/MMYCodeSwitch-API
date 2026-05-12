@@ -29,12 +29,6 @@
         </div>
       </div>
     </template>
-    <template #footer>
-      <div class="card add-card" @click="emit('add')">
-        <div class="icon-wrap"><div class="icon">+</div></div>
-        <div class="label">{{ t('add_provider') }}</div>
-      </div>
-    </template>
   </draggable>
 
   <n-dropdown
@@ -239,8 +233,4 @@ body.dark .icon { color: #ccc; }
 .test-badge.ok { color: #18a058; }
 .test-badge.fail { color: #d03050; }
 .icon-img { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; }
-.add-card { border-style: dashed; background: #fafafa; cursor: pointer; }
-body.dark .add-card { background: #222; }
-.add-card .icon { color: #bbb; font-size: 26px; }
-.add-card .icon-wrap { background: none; border-style: dashed; }
 </style>

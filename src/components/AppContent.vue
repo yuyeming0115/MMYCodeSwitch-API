@@ -22,7 +22,8 @@ import {
   ExtensionPuzzleOutline,
   SunnyOutline,
   MoonOutline,
-  SettingsOutline
+  SettingsOutline,
+  AddCircleOutline
 } from '@vicons/ionicons5'
 
 const { t } = useI18n()
@@ -383,6 +384,9 @@ async function handleReorderProjects(orderedIds: string[]) {
     <div v-if="currentPage === 'main'" class="page-main">
       <!-- 顶部工具栏（简洁矢量图标） -->
       <div v-show="!compactMode" class="toolbar">
+        <div class="toolbar-btn" @click="openAdd" title="添加供应商">
+          <n-icon :size="20"><AddCircleOutline /></n-icon>
+        </div>
         <div class="toolbar-btn" @click="currentPage = 'usage-stats'" title="Token统计">
           <n-icon :size="20"><StatsChartOutline /></n-icon>
         </div>
@@ -554,10 +558,14 @@ body.dark .toggle-title { color: #aaa; }
   user-select: none;
 }
 .toolbar-btn:hover {
-  background: rgba(0,0,0,0.06);
+  background: rgba(24, 160, 88, 0.12);
+}
+.toolbar-btn:hover svg {
+  color: #18a058;
 }
 .toolbar-btn svg {
   color: #555;
+  transition: color 0.15s;
 }
 
 /* 深色模式适配 */
@@ -566,10 +574,14 @@ body.dark .toolbar {
   background: #242424;
 }
 body.dark .toolbar-btn:hover {
-  background: rgba(255,255,255,0.08);
+  background: rgba(24, 160, 88, 0.15);
+}
+body.dark .toolbar-btn:hover svg {
+  color: #18a058;
 }
 body.dark .toolbar-btn svg {
   color: #aaa;
+  transition: color 0.15s;
 }
 
 /* 响应式：窄屏时保持紧凑 */
