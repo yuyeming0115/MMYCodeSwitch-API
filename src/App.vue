@@ -177,24 +177,22 @@ body.dark .titlebar-page-title { color: #ccc; }
   app-region: no-drag;
 }
 .titlebar-btn {
-  width: 46px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 16px;
-  color: #666;
   transition: background 0.15s;
-  border: none;
   background: transparent;
+  padding: 0;
+  border: none;
 }
-.titlebar-btn.back-btn {
-  width: auto;
-  padding: 0 8px;
-  font-size: 18px;
-}
-.titlebar-btn:hover { background: #e8e8e8; }
-body.dark .titlebar-btn:hover { background: #3a3a3a; }
-.titlebar-btn.close:hover { background: #e81123 !important; color: #fff; }
+.titlebar-btn:hover { background: rgba(215, 119, 87, 0.12); }
+.titlebar-btn:hover svg { color: #d77757; }
+body.dark .titlebar-btn:hover { background: rgba(215, 119, 87, 0.15); }
+body.dark .titlebar-btn:hover svg { color: #d77757; }
+.titlebar-btn.close-btn:hover { background: #e81123 !important; }
+.titlebar-btn.close-btn:hover svg { color: #fff !important; }
 </style>

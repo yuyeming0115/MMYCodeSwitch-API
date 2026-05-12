@@ -24,7 +24,11 @@ import {
   MoonOutline,
   SettingsOutline,
   AddCircleOutline,
-  AppsOutline
+  AppsOutline,
+  ArrowBackOutline,
+  RemoveOutline,
+  SquareOutline,
+  CloseOutline
 } from '@vicons/ionicons5'
 
 const { t } = useI18n()
@@ -393,7 +397,9 @@ async function handleReorderProjects(orderedIds: string[]) {
           <span class="titlebar-title">MMYCodeSwitch-API</span>
         </template>
         <template v-else>
-          <button class="titlebar-btn back-btn" @click="goBack" title="返回">←</button>
+          <div class="titlebar-btn back-btn" @click="goBack" title="返回">
+            <n-icon :size="16"><ArrowBackOutline /></n-icon>
+          </div>
           <span class="titlebar-page-title">{{ pageTitle }}</span>
         </template>
       </div>
@@ -401,9 +407,15 @@ async function handleReorderProjects(orderedIds: string[]) {
         <button class="titlebar-btn compact" @click="compactMode = !compactMode" title="精简模式">
           <n-icon :size="16"><AppsOutline /></n-icon>
         </button>
-        <button class="titlebar-btn" @click="appWindow.minimize()">─</button>
-        <button class="titlebar-btn" @click="toggleMax">□</button>
-        <button class="titlebar-btn close" @click="doCloseWindow">✕</button>
+        <div class="titlebar-btn" @click="appWindow.minimize()" title="最小化">
+          <n-icon :size="16"><RemoveOutline /></n-icon>
+        </div>
+        <div class="titlebar-btn" @click="toggleMax" title="最大化">
+          <n-icon :size="16"><SquareOutline /></n-icon>
+        </div>
+        <div class="titlebar-btn close-btn" @click="doCloseWindow" title="关闭">
+          <n-icon :size="16"><CloseOutline /></n-icon>
+        </div>
       </div>
     </div>
 
