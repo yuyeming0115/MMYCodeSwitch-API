@@ -157,6 +157,7 @@ export default {
   template_adopted: 'Adopted',
   template_adopt_success: 'Template added to your list',
   template_adopt_failed: 'Adopt failed: {msg}',
+  template_preview: 'Preview',
   // Skill management
   skills: 'Skill Library',
   skill_name: 'Skill Name',
@@ -251,4 +252,5 @@ export default {
   backup_delete_success: 'Backup deleted',
   backup_restore: 'Restore',
   backup_restoring: 'Restoring backup...',
+  launch_claude_code: 'Launch Claude Code',
 }

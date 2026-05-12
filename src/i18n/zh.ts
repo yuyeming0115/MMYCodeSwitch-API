@@ -253,4 +253,5 @@ export default {
   backup_delete_success: '备份已删除',
   backup_restore: '恢复',
   backup_restoring: '正在恢复备份...',
+  launch_claude_code: '启动Claude Code',
 }

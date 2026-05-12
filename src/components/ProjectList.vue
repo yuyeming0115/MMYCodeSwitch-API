@@ -284,7 +284,7 @@ body.dark .proj-name { color: #ddd; }
   font-size: 11px;
 }
 .proj-provider {
-  color: #18a058;
+  color: #d77757;
   font-weight: 500;
 }
 .proj-time { color: #bbb; }
@@ -309,7 +309,7 @@ body.dark .proj-name { color: #ddd; }
   width: 24px; height: 24px;
   border-radius: 6px;
   border: none;
-  background: #18a058;
+  background: #d77757;
   color: #fff;
   cursor: pointer;
   font-size: 10px;
@@ -319,7 +319,7 @@ body.dark .proj-name { color: #ddd; }
   transition: background .15s, transform .1s;
 }
 .launch-btn:hover {
-  background: #0e7a3f;
+  background: #c46a4a;
   transform: scale(1.08);
 }
 .launch-btn:active { transform: scale(0.95); }

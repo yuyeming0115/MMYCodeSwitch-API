@@ -19,6 +19,7 @@
         :class="{ active: p.id === activeProviderId }"
         @click="emit('switch', p)"
         @contextmenu.prevent="e => openMenu(e, p)"
+        :title="t('launch_claude_code')"
       >
         <img v-if="p.icon_path" :src="resolveIconUrl(p.icon_path)" class="icon-img" />
         <div v-else class="icon-wrap"><span class="icon">{{ p.icon_fallback || p.name?.charAt(0) || '?' }}</span></div>
@@ -155,35 +156,34 @@ function onDragEnd() {
   align-content: center;
 }
 .card {
-  width: 108px; min-height: 100px; border-radius: 14px; border: 2px solid #e0e0e0;
+  width: 108px; min-height: 100px; border-radius: 14px; border: 1px solid #e0e0e0;
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
   padding: 14px 8px 10px;
   cursor: grab; position: relative;
-  /* 只对非 transform 属性设置 transition，避免覆盖 SortableJS 内联动画 */
   transition: border-color .2s, box-shadow .2s;
   background: #fff; user-select: none;
 }
-.card:hover { border-color: #18a058; box-shadow: 0 3px 10px rgba(24,160,88,0.16); }
-.card.active { border-color: #18a058; background: #f0faf5; }
+.card:hover { border-color: #d77757; box-shadow: 0 3px 10px rgba(215, 119, 87,0.16); }
+.card.active { border-color: #d77757; background: #faf3eb; }
 
 /* 深色模式适配 */
 body.dark .card { background: #2a2a2a; border-color: #444; }
-body.dark .card:hover { border-color: #18a058; }
-body.dark .card.active { background: #1a3a28; border-color: #18a058; }
+body.dark .card:hover { border-color: #d77757; }
+body.dark .card.active { background: #2a2018; border-color: #d77757; }
 body.dark .label { color: #ccc; }
 
 /* 拖拽视觉反馈 */
 .ghost {
   opacity: 0.2;
-  border: 2px dashed #4A90D9;
+  border: 2px dashed #d77757;
   border-radius: 14px;
 }
 .chosen {
-  box-shadow: 0 4px 16px rgba(24,160,88,0.2);
+  box-shadow: 0 4px 16px rgba(215, 119, 87,0.2);
 }
 .dragging {
   transform: scale(1.05) rotate(1deg);
-  box-shadow: 0 16px 40px rgba(74, 144, 217, 0.3);
+  box-shadow: 0 16px 40px rgba(215, 119, 87, 0.3);
   z-index: 9999;
 }
 
@@ -203,8 +203,8 @@ body.dark .icon-wrap {
 }
 .card:hover .icon-wrap,
 .card.active .icon-wrap {
-  border-color: #18a05860;
-  box-shadow: 0 2px 6px rgba(24,160,88,0.15);
+  border-color: #d7775760;
+  box-shadow: 0 2px 6px rgba(215, 119, 87,0.15);
 }
 .icon {
   font-size: 18px;
@@ -227,10 +227,10 @@ body.dark .icon { color: #ccc; }
   word-break: break-all;
 }
 
-.badge { position: absolute; top: 5px; right: 7px; color: #18a058; font-size: 14px; font-weight: 700; }
+.badge { position: absolute; top: 5px; right: 7px; color: #d77757; font-size: 14px; font-weight: 700; }
 .test-badge { position: absolute; bottom: 5px; right: 7px; font-size: 11px; font-weight: 700; }
 .test-badge.testing { color: #aaa; }
-.test-badge.ok { color: #18a058; }
+.test-badge.ok { color: #d77757; }
 .test-badge.fail { color: #d03050; }
 .icon-img { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; }
 </style>

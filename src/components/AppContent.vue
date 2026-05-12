@@ -382,31 +382,6 @@ async function handleReorderProjects(orderedIds: string[]) {
 
     <!-- 主页面 -->
     <div v-if="currentPage === 'main'" class="page-main">
-      <!-- 顶部工具栏（简洁矢量图标） -->
-      <div v-show="!compactMode" class="toolbar">
-        <div class="toolbar-btn" @click="openAdd" title="添加供应商">
-          <n-icon :size="20"><AddCircleOutline /></n-icon>
-        </div>
-        <div class="toolbar-btn" @click="currentPage = 'usage-stats'" title="Token统计">
-          <n-icon :size="20"><StatsChartOutline /></n-icon>
-        </div>
-        <div class="toolbar-btn" @click="currentPage = 'templates'" title="规则模板">
-          <n-icon :size="20"><DocumentTextOutline /></n-icon>
-        </div>
-        <div class="toolbar-btn" @click="currentPage = 'skills'" title="Skills">
-          <n-icon :size="20"><BuildOutline /></n-icon>
-        </div>
-        <div class="toolbar-btn" @click="currentPage = 'plugins'" title="插件">
-          <n-icon :size="20"><ExtensionPuzzleOutline /></n-icon>
-        </div>
-        <div class="toolbar-btn" @click="isDark = !isDark" :title="isDark ? '浅色模式' : '深色模式'">
-          <n-icon :size="20"><component :is="isDark ? SunnyOutline : MoonOutline" /></n-icon>
-        </div>
-        <div class="toolbar-btn" @click="currentPage = 'settings'" title="设置">
-          <n-icon :size="20"><SettingsOutline /></n-icon>
-        </div>
-      </div>
-
       <!-- 内容区域 -->
       <div class="content">
         <ProviderGrid
@@ -435,6 +410,31 @@ async function handleReorderProjects(orderedIds: string[]) {
           @launch="handleLaunchProject"
           @reorder="handleReorderProjects"
         />
+      </div>
+
+      <!-- 底部工具栏（简洁矢量图标） -->
+      <div v-show="!compactMode" class="toolbar">
+        <div class="toolbar-btn" @click="openAdd" title="添加供应商">
+          <n-icon :size="20"><AddCircleOutline /></n-icon>
+        </div>
+        <div class="toolbar-btn" @click="currentPage = 'usage-stats'" title="Token统计">
+          <n-icon :size="20"><StatsChartOutline /></n-icon>
+        </div>
+        <div class="toolbar-btn" @click="currentPage = 'templates'" title="规则模板">
+          <n-icon :size="20"><DocumentTextOutline /></n-icon>
+        </div>
+        <div class="toolbar-btn" @click="currentPage = 'skills'" title="Skills">
+          <n-icon :size="20"><BuildOutline /></n-icon>
+        </div>
+        <div class="toolbar-btn" @click="currentPage = 'plugins'" title="插件">
+          <n-icon :size="20"><ExtensionPuzzleOutline /></n-icon>
+        </div>
+        <div class="toolbar-btn" @click="isDark = !isDark" :title="isDark ? '浅色模式' : '深色模式'">
+          <n-icon :size="20"><component :is="isDark ? SunnyOutline : MoonOutline" /></n-icon>
+        </div>
+        <div class="toolbar-btn" @click="currentPage = 'settings'" title="设置">
+          <n-icon :size="20"><SettingsOutline /></n-icon>
+        </div>
       </div>
     </div>
 
@@ -540,7 +540,8 @@ body.dark .toggle-title { color: #aaa; }
   justify-content: center;
   gap: 6px;
   padding: 8px 12px;
-  border-bottom: 1px solid #eee;
+  border-top: 1px solid #eee;
+  border-bottom: none;
   background: #fafafa;
   flex-shrink: 0;
 }
@@ -558,10 +559,10 @@ body.dark .toggle-title { color: #aaa; }
   user-select: none;
 }
 .toolbar-btn:hover {
-  background: rgba(24, 160, 88, 0.12);
+  background: rgba(215, 119, 87, 0.12);
 }
 .toolbar-btn:hover svg {
-  color: #18a058;
+  color: #d77757;
 }
 .toolbar-btn svg {
   color: #555;
@@ -570,14 +571,14 @@ body.dark .toggle-title { color: #aaa; }
 
 /* 深色模式适配 */
 body.dark .toolbar {
-  border-bottom-color: #333;
+  border-top-color: #333;
   background: #242424;
 }
 body.dark .toolbar-btn:hover {
-  background: rgba(24, 160, 88, 0.15);
+  background: rgba(215, 119, 87, 0.15);
 }
 body.dark .toolbar-btn:hover svg {
-  color: #18a058;
+  color: #d77757;
 }
 body.dark .toolbar-btn svg {
   color: #aaa;
