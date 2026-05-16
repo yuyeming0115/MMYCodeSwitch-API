@@ -305,7 +305,7 @@ fn replace_marker_block(content: &str, new_marker_block: &str) -> String {
         "{}\n{}",
         &content[..start_idx].trim_end(),
         new_marker_block.trim(),
-    ) + &content[end_idx..]
+    ) + content[end_idx..].trim_start()
 }
 
 /// 移除标记块及其内容（保留标记前后的所有内容）
